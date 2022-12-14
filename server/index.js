@@ -25,13 +25,7 @@ io.on("connection", (socket) => {
         const clients = io.sockets.adapter.rooms.get(gameId);
         const numClients = clients ? clients.size : 0;
         io.in(gameId).emit("user_log", numClients);
-        console.log([...clients]);
         io.in(gameId).emit("user_list", [...clients]);
-    });
-
-    socket.on("get_user_list", (data) => {
-        const clients = io.sockets.adapter.rooms.get(data);
-        socket.to(data).emit("user_list", [...clients]);
     });
 
     socket.on("send_message", (data) => {
@@ -42,6 +36,10 @@ io.on("connection", (socket) => {
         for (const room of socket.rooms) {
             if (room !== socket.id) {
                 const clients = io.sockets.adapter.rooms.get(room);
+                const clientArr = [...clients];
+                const index = clientArr.indexOf(socket.id);
+                clientArr.splice(index, 1);
+                io.in(room).emit("user_list", clientArr);
                 const numClients = clients ? clients.size : 0;
                 io.in(room).emit("user_log", numClients-1);
             }

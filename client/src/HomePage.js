@@ -19,7 +19,7 @@ function HomePage() {
             setInfoText("No number added!");
             verifyGame(false);
         }
-        else if (gameNumber <= 8999 && gameNumber >= 1001) {
+        else if (gameNumber <= 9999 && gameNumber >= 1001) {
             return (
                <Navigate to={`/game/${gameNumber}`} />
             );
