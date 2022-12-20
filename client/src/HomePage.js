@@ -1,7 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useState } from "react";
 
-
 function HomePage() {
     const [goToGame, createGameRoom] = useState(false);
     const [gameNumber, setGameNumber] = useState(0);
@@ -10,13 +9,15 @@ function HomePage() {
 
     if (goToGame) {
         const gameId = Math.floor(Math.random() * (8999)) + 1001;
+        
         return (
             <Navigate to={`/game/${gameId}`} />
         );
     }
+
     if (goToSpecificGame) {
         if (gameNumber === 0 || isNaN(gameNumber)) {
-            setInfoText("No number added!");
+            setInfoText("Please add the game number!");
             verifyGame(false);
         }
         else if (gameNumber <= 9999 && gameNumber >= 1001) {
@@ -25,11 +26,10 @@ function HomePage() {
             );
         }
         else {
-            setInfoText("Invalid number!");
+            setInfoText("Game does not exist!");
             verifyGame(false);
         }
     }
-
 
     return (
         <div className="HomePage">
