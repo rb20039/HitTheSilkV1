@@ -84,3 +84,16 @@ body {
 .YourInfo {
     color: darkorange;
 }
+
+.ActiveGame .Block {
+    padding: 0 5px 0 5px;
+    display: inline-block;
+    border: 3px solid black;
+    margin: 0 5px 0 5px;
+}
+
+.Card {
+    display: inline-block;
+    padding: 0 5px 0 5px;
+}
+

@@ -12,7 +12,10 @@ function Game() {
     const [tempUserName, setTempUserName] = useState("");
     const [message, setMessage] = useState("");
     const [userCount, setUserCount] = useState("");
+    const [usedCard, setUsedCard] = useState("");
+    const [altitude, setAltitude] = useState(0);
     const [playerList, setPlayerList] = useState(["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"]);
+    const [playerHand, setPlayerHand] = useState(["temp1", "temp2", "temp3", "temp4"]);
     const [chatLog, updateChatLog] = useState([]);
     const [returnToHomepage, callHomepage] = useState(false);
     const [activeGame, setActiveGame] = useState(false);
@@ -30,8 +33,15 @@ function Game() {
 
     const startGame = () => {
         socket.emit("start_game", gameId);
-        socket.emit("shuffle");
+        // socket.emit("shuffle");
     }
+
+    useEffect(() => {
+        if (usedCard !== "") {
+            console.log(usedCard);
+        }
+        setUsedCard("");
+    }, [usedCard]);
 
     useEffect(() => {
         // set up so it shows currently connected users
@@ -68,12 +78,25 @@ function Game() {
         });
 
         socket.on("setup_game", (nr) => {
-            if (nr === 0) {
-                setActiveGame(false);
+            if (nr !== 0) {
+                setActiveGame(true);
+                if (nr === 3) {
+                    setAltitude(16000);
+                }
+                else {
+                    setAltitude(16000 + ((nr - 3) * 3000));
+                }
             }
             else {
-                setActiveGame(true);
+                setActiveGame(false);
             }
+        });
+
+        socket.on("update_hand", (data) => {
+            const newHand = playerHand.map((c, i) => {
+                return data[i];
+            });
+            setPlayerHand(newHand);
         });
 
     }, [socket]);
@@ -87,54 +110,89 @@ function Game() {
 
     if (userName !== "") {
         if (playerList[0] !== "temp1") {
-            return (
-                <div className="Game">
-                    <div className="Player">
-                        {playerList.map((player, i) => {
-                            if (player === userName) {
-                                if (i === 0) {
+            if (!activeGame) {
+                return (
+                    <div className="Game">
+                        <div className="Player">
+                            {playerList.map((player, i) => {
+                                if (player === userName) {
+                                    if (i === 0) {
+                                        return (
+                                            <div className="YourInfo" key={i}>
+                                                <button onClick={startGame}>Start game</button>
+                                                <h1>{userName}</h1>
+                                            </div>
+                                        );
+                                    }
                                     return (
                                         <div className="YourInfo" key={i}>
-                                            <button onClick={startGame}>Start game</button>
                                             <h1>{userName}</h1>
                                         </div>
                                     );
                                 }
+                                else if (player === 0) {
+                                    return;
+                                }
                                 return (
-                                    <div className="YourInfo" key={i}>
-                                        <h1>{userName}</h1>
+                                    <div className="PlayerInfo" key={i}>
+                                        <h1>{player}</h1>
                                     </div>
                                 );
-                            }
-                            else if (player === 0) {
-                                return;
-                            }
+                            })}
+                        </div>
+                        <h1>Game room - {gameId}</h1>
+                        <button onClick={() => { callHomepage(true) }}>Leave room</button>
+                        <input placeholder="Message..." onChange={(event) => { setMessage(event.target.value); }} />
+                        <button onClick={sendMessage}>Send message</button>
+                        <h2>Currently logged in users - {userCount}</h2>
+                        <div className="Chat">
+                            <h1>Message:</h1>
+                            <ul>
+                                {chatLog.map((data, i) => {
+                                    return (
+                                        <li key={i}>{data.name} said {data.msg}</li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+                        {activeGame
+                            ? <h1>yes</h1>
+                            : <h1>no</h1>
+                        }
+                    </div>
+                );
+            }
+            return (
+                <div className="ActiveGame">
+                    {playerList.map((player, i) => {
+                        if (player === userName) {
                             return (
-                                <div className="PlayerInfo" key={i}>
-                                    <h1>{player}</h1>
+                                <div className="YourInfo Block" key={i}>
+                                    <h1>{userName}</h1>
+                                    {playerHand.map((card, i2) => { 
+                                        if (card === -1) {
+                                            return;
+                                        }
+                                        return (
+                                            <div className="Card" key={i2}>
+                                                <h2>{card}</h2>
+                                                <button onClick={() => { setUsedCard(card) }}>Use</button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             );
-                        })}
-                    </div>
-                    <h1>Game room - {gameId}</h1>
-                    <button onClick={() => { callHomepage(true) }}>Leave room</button>
-                    <input placeholder="Message..." onChange={(event) => { setMessage(event.target.value); }} />
-                    <button onClick={sendMessage}>Send message</button>
-                    <h2>Currently logged in users - {userCount}</h2>
-                    <div className="Chat">
-                        <h1>Message:</h1>
-                        <ul>
-                            {chatLog.map((data, i) => {
-                                return (
-                                    <li key={i}>{data.name} said {data.msg}</li>
-                                );
-                            })}
-                        </ul>
-                    </div>
-                    {activeGame
-                        ? <h1>yes</h1>
-                        : <h1>no</h1>
-                    }
+                        }
+                        else if (player === 0) {
+                            return;
+                        }
+                        return (
+                            <div className="PlayerInfo Block" key={i}>
+                                <h1>{player}</h1>
+                            </div>
+                        );
+                    })}
+                    <h1>Altitude: {altitude}ft</h1>
                 </div>
             );
         }

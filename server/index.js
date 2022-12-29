@@ -28,6 +28,13 @@ const shuffleCards = (cardDeck) => {
     return cardDeck;
 }
 
+const defineCards = (cardDeck) => {
+    const definedDeck = cardDeck.map((c) => {
+        return cards[c];
+    });
+    return definedDeck;
+}
+
 io.on("connection", (socket) => {
 
     socket.on("join_room", (gameId) => {
@@ -93,53 +100,102 @@ io.on("connection", (socket) => {
         }
     });
 
-    socket.on("shuffle", () => { // Fisher Yates aka Knuth shuffle
-        let deck = [0, 0, 0, 1, 1, 1, 2, 4, 4, 7, 9, 10, 10, 11, 12, 13, 14, 15];
-        deck = shuffleCards(deck);
-        const newDeck = deck.splice(0, 6);
-        deck = deck.concat([6, 6, 8, 13, 13, 13, 16, 16, 16]);
-        deck = shuffleCards(deck);
-        const player1 = deck.splice(0, 6);
-        const player2 = deck.splice(0, 6);
-        const player3 = deck.splice(0, 6);
-        const newNewDeck = newDeck.map((c) => {
-            return cards[c];
-        });
-        const newPlayer1 = player1.map((c) => {
-            return cards[c];
-        });
-        const newPlayer2 = player2.map((c) => {
-            return cards[c];
-        });
-        const newPlayer3 = player3.map((c) => {
-            return cards[c];
-        });
-        const newoDeck = deck.map((c) => {
-            return cards[c];
-        });
-    });
+    //socket.on("shuffle", () => { // Fisher Yates aka Knuth shuffle
+    //    let deck = [0, 0, 0, 1, 1, 1, 2, 4, 4, 7, 9, 10, 10, 11, 12, 13, 14, 15];
+    //    deck = shuffleCards(deck);
+    //    const lockBoxHand = deck.splice(0, 6);
+    //    deck = deck.concat([6, 6, 8, 13, 13, 13, 16, 16, 16]);
+    //    deck = shuffleCards(deck);
+    //    const player1 = deck.splice(0, 6);
+    //    const player2 = deck.splice(0, 6);
+    //    const player3 = deck.splice(0, 6);
+    //    const newNewDeck = lockBoxHand.map((c) => {
+    //        return cards[c];
+    //    });
+    //    const newPlayer1 = player1.map((c) => {
+    //        return cards[c];
+    //    });
+    //    const newPlayer2 = player2.map((c) => {
+    //        return cards[c];
+    //    });
+    //    const newPlayer3 = player3.map((c) => {
+    //        return cards[c];
+    //    });
+    //    const newoDeck = deck.map((c) => {
+    //        return cards[c];
+    //    });
+    //});
 
     socket.on("start_game", (gameId) => {
         let deck = [0, 0, 0, 1, 1, 1, 2, 4, 4, 7, 9, 10, 10, 11, 12, 13, 14, 15];
-        deck = shuffleCards(deck);
         const clients = io.sockets.adapter.rooms.get(gameId);
+        const clientsArr = [...clients];
         const numClients = clients ? clients.size : 0;
         if (numClients >= 6) {
+            deck = deck.concat([0, 0, 0, 0, 0, 1, 2, 2, 3, 5, 7, 9, 9, 10, 11, 12, 15, 15]);
+            deck = shuffleCards(deck);
+            const lockboxHand = deck.splice(0, 6);
+            deck = deck.concat([6, 6, 6, 8, 8, 13, 13, 13, 13, 13, 13, 16, 16, 16, 16, 16]);
+            deck = shuffleCards(deck);
+            const player1Hand = deck.splice(0, 6);
+            io.to(clientsArr[0]).emit("update_hand", defineCards(player1Hand));
+            const player2Hand = deck.splice(0, 6);
+            io.to(clientsArr[1]).emit("update_hand", defineCards(player2Hand));
+            const player3Hand = deck.splice(0, 6);
+            io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
+            const player4Hand = deck.splice(0, 6);
+            io.to(clientsArr[3]).emit("update_hand", defineCards(player4Hand));
+            const player5Hand = deck.splice(0, 6);
+            io.to(clientsArr[4]).emit("update_hand", defineCards(player5Hand));
+            const player6Hand = deck.splice(0, 6);
+            io.to(clientsArr[5]).emit("update_hand", defineCards(player6Hand));
             io.in(gameId).emit("setup_game", 6);
         }
         else if (numClients === 5) {
+            deck = deck.concat([0, 0, 0, 0, 2, 2, 5, 7, 9, 10, 15]);
+            deck = shuffleCards(deck);
+            const lockboxHand = deck.splice(0, 6);
+            deck = deck.concat([6, 6, 6, 8, 8, 13, 13, 13, 13, 13, 16, 16, 16, 16, 16]);
+            deck = shuffleCards(deck);
+            const player1Hand = deck.splice(0, 6);
+            io.to(clientsArr[0]).emit("update_hand", defineCards(player1Hand));
+            const player2Hand = deck.splice(0, 6);
+            io.to(clientsArr[1]).emit("update_hand", defineCards(player2Hand));
+            const player3Hand = deck.splice(0, 6);
+            io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
+            const player4Hand = deck.splice(0, 6);
+            io.to(clientsArr[3]).emit("update_hand", defineCards(player4Hand));
+            const player5Hand = deck.splice(0, 6);
+            io.to(clientsArr[4]).emit("update_hand", defineCards(player5Hand));
             io.in(gameId).emit("setup_game", 5);
         }
         else if (numClients === 4) {
+            deck = deck.concat([0, 0, 2, 4, 7, 9, 15]);
+            deck = shuffleCards(deck);
+            const lockboxHand = deck.splice(0, 6);
+            deck = deck.concat([6, 6, 8, 13, 13, 13, 13, 16, 16, 16, 16]);
+            deck = shuffleCards(deck);
+            const player1Hand = deck.splice(0, 6);
+            io.to(clientsArr[0]).emit("update_hand", defineCards(player1Hand));
+            const player2Hand = deck.splice(0, 6);
+            io.to(clientsArr[1]).emit("update_hand", defineCards(player2Hand));
+            const player3Hand = deck.splice(0, 6);
+            io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
+            const player4Hand = deck.splice(0, 6);
+            io.to(clientsArr[3]).emit("update_hand", defineCards(player4Hand));
             io.in(gameId).emit("setup_game", 4);
         }
         else if (numClients === 3) {
-            const lockbox = deck.splice(0, 6);
+            deck = shuffleCards(deck);
+            const lockboxHand = deck.splice(0, 6);
             deck = deck.concat([6, 6, 8, 13, 13, 13, 16, 16, 16]);
             deck = shuffleCards(deck);
-            const player1 = deck.splice(0, 6);
-            const player2 = deck.splice(0, 6);
-            const player3 = deck.splice(0, 6);
+            const player1Hand = deck.splice(0, 6);
+            io.to(clientsArr[0]).emit("update_hand", defineCards(player1Hand));
+            const player2Hand = deck.splice(0, 6);
+            io.to(clientsArr[1]).emit("update_hand", defineCards(player2Hand));
+            const player3Hand = deck.splice(0, 6);
+            io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
             io.in(gameId).emit("setup_game", 3);
         }
         else {
