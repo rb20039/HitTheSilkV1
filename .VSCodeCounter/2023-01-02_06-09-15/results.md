@@ -1,10 +1,10 @@
 # Summary
 
-Date : 2022-12-18 22:18:17
+Date : 2023-01-02 06:09:15
 
 Directory c:\\Users\\Rolis\\source\\repos\\HitTheSilkV1\\server
 
-Total : 3 files,  2061 codes, 0 comments, 15 blanks, all 2076 lines
+Total : 3 files,  2134 codes, 29 comments, 23 blanks, all 2186 lines
 
 Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)
 
@@ -12,11 +12,11 @@ Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-
 | language | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
 | JSON | 2 | 1,954 | 0 | 2 | 1,956 |
-| JavaScript | 1 | 107 | 0 | 13 | 120 |
+| JavaScript | 1 | 180 | 29 | 21 | 230 |
 
 ## Directories
 | path | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| . | 3 | 2,061 | 0 | 15 | 2,076 |
+| . | 3 | 2,134 | 29 | 23 | 2,186 |
 
 Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)

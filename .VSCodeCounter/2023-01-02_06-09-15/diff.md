@@ -1,10 +1,10 @@
 # Diff Summary
 
-Date : 2022-12-18 22:18:17
+Date : 2023-01-02 06:09:15
 
 Directory c:\\Users\\Rolis\\source\\repos\\HitTheSilkV1\\server
 
-Total : 14 files,  -27627 codes, -14 comments, -63 blanks, all -27704 lines
+Total : 14 files,  -27814 codes, 14 comments, -66 blanks, all -27866 lines
 
 [Summary](results.md) / [Details](details.md) / Diff Summary / [Diff Details](diff-details.md)
 
@@ -13,17 +13,17 @@ Total : 14 files,  -27627 codes, -14 comments, -63 blanks, all -27704 lines
 | :--- | ---: | ---: | ---: | ---: | ---: |
 | HTML | 1 | -19 | -10 | -1 | -30 |
 | Markdown | 1 | -38 | 0 | -33 | -71 |
-| CSS | 2 | -78 | 0 | -16 | -94 |
-| JavaScript | 5 | -99 | -4 | -12 | -115 |
+| CSS | 2 | -88 | 0 | -19 | -107 |
+| JavaScript | 5 | -276 | 24 | -12 | -264 |
 | JSON | 5 | -27,393 | 0 | -1 | -27,394 |
 
 ## Directories
 | path | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| . | 14 | -27,627 | -14 | -63 | -27,704 |
-| .. | 11 | -29,688 | -14 | -78 | -29,780 |
-| ..\\client | 11 | -29,688 | -14 | -78 | -29,780 |
+| . | 14 | -27,814 | 14 | -66 | -27,866 |
+| .. | 11 | -29,948 | -15 | -89 | -30,052 |
+| ..\\client | 11 | -29,948 | -15 | -89 | -30,052 |
 | ..\\client\\public | 3 | -50 | -10 | -3 | -63 |
-| ..\\client\\src | 5 | -278 | -4 | -40 | -322 |
+| ..\\client\\src | 5 | -538 | -5 | -51 | -594 |
 
 [Summary](results.md) / [Details](details.md) / Diff Summary / [Diff Details](diff-details.md)
