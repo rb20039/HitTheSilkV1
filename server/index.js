@@ -71,18 +71,23 @@ io.on("connection", (socket) => {
     });
 
     socket.on("kungfu_reply", (data) => {
-        const shuffledHand = shuffleCards(data.playerHand);
+        const shuffledHand = shuffleCards(data.currentHand);
         const weaponIndex = shuffledHand.indexOf("revolver") > shuffledHand.indexOf("knife") ? shuffledHand.indexOf("revolver") : shuffledHand.indexOf("knife");
         if (weaponIndex !== -1) {
-            if (shuffledHand.indexOf("kungfu") !== -1) {
-                io.to(data.requestee).emit("kungfu_miss");
+            const kungfuIndex = data.currentHand.indexOf("kungfu");
+            if (kungfuIndex !== -1) {
+                io.to(data.requestee).emit("draw_flannel");
+                const newCard = gameStatus[socket.data.room].deck.pop();
+                io.to(socket.id).emit("replace_indexed_card", { card:newCard, index:kungfuIndex });
             }
             else {
-                io.to(data.requestee).emit("kungfu_hit");
+                const newCard = gameStatus[socket.data.room].deck.pop();
+                io.to(data.requestee).emit("replace_card", newCard);
+                io.to(socket.id).emit("draw_indexed_flannel", data.currentHand.indexOf(shuffledHand[weaponIndex]));
             }
         }
         else {
-            io.to(data.requestee).emit("kungfu_miss");
+            io.to(data.requestee).emit("draw_flannel");
         }
     });
 
@@ -90,18 +95,28 @@ io.on("connection", (socket) => {
         io.to(selectedPlayer).emit("spy_request", socket.id);
     });
 
-    socket.on("reveal_hand", (data) => {
+    socket.on("spy_reply", (data) => {
         console.log(data);
     });
 
     socket.on("card_steal", (selectedPlayer) => {
-        io.to(selectedPlayer).emit("request_hand", socket.id);
+        io.to(selectedPlayer).emit("steal_request", socket.id);
     });
+
+    socket.on("steal_reply", (data) => {
+        const shuffledHand = shuffleCards(data.currentHand);
+        const options = shuffledHand.splice(0, 2);
+        io.to(data.requestee).emit("steal_select", { requestee:socket.id, options }) 
+    });
+
+    /*socket.on("steal_complete", (data) => {
+
+    });*/
 
     //socket.on("register_user", (data) => {
     //    const userData = { id: socket.id, name: data.tempUserName };
     //    users.push(userData);
-    //});
+    //});/
 
     socket.on("send_message", (data) => {
         socket.to(data.gameId).emit("receive_message", data);    
@@ -144,7 +159,7 @@ io.on("connection", (socket) => {
     //});
     socket.on("discard", (card) => {
         gameStatus[socket.data.room].discarded.push(card);
-        console.log(gameStatus[socket.data.room].discarded);
+        //console.log(gameStatus[socket.data.room].discarded);
     });
 
     socket.on("setup_completed", (gameId) => {
@@ -234,6 +249,7 @@ io.on("connection", (socket) => {
             const player3Hand = deck.splice(0, 6);
             io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
             gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [] };
+            console.log(gameStatus[gameId].deck);
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else {
