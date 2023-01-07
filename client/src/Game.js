@@ -17,35 +17,46 @@ function Game() {
     const [altitude, setAltitude] = useState(0);
     const [playerList, setPlayerList] = useState([{
             socket: "temp",
-            name: "temp1"
+            name: "temp1",
+            status: 0
         },
         {
             socket: "temp",
-            name: "temp2"
+            name: "temp2",
+            status: 0
         },
         {
             socket: "temp",
-            name: "temp3"
+            name: "temp3",
+            status: 0
         },
         {
             socket: "temp",
-            name: "temp4"
+            name: "temp4",
+            status: 0
         },
         {
             socket: "temp",
-            name: "temp5"
+            name: "temp5",
+            status: 0
         },
         {
             socket: "temp",
-            name: "temp6"
+            name: "temp6",
+            status: 0
         }
     ]);
+    const [lockBox, setLockBox] = useState(["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"]);
     const [playerHand, setPlayerHand] = useState(["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"]);
     // let currentHand = ["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"];
+    const [revolverOptions, setRevolverOptions] = useState(["", "", "", ""]);
     const [stealOptions, setStealOptions] = useState(["", ""]);
     const [chatLog, updateChatLog] = useState([]);
+    const playerStatus = useRef(0);
     const playerCurrentHand = useRef([]);
     const replyPlayer = useRef("");
+    const poisonedPlayer = useRef(false);
+    const usedCardReference = useRef({ index: 0, card: "" });
     const [newGame, setNewGame] = useState(false);
     const [gameReady, setGameReady] = useState(false);
     const [returnToHomepage, callHomepage] = useState(false);
@@ -67,23 +78,41 @@ function Game() {
         // socket.emit("shuffle");
     }
 
-    const stealCard = (stolenCard) => {
-        socket.emit("steal_complete", { stolenCard, stealOptions, selectedPlayer });
-        setStealOptions(["", ""]);
-        removeCard(usedCard.index, stolenCard);
+    const executeRevolver = (stolenCard) => { 
+        socket.emit("revolver_complete", { stolenCard, selectedPlayer });
+        setRevolverOptions(["", "", "", ""]);
+        removeCard(playerCurrentHand.current.indexOf("bullet"), true, stolenCard);
         setUsedCard({ index: 0, card: "" });
         setSelectedPlayer("");
     }
 
-    function removeCard(index, card) {
+    const stealCard = (stolenCard) => {
+        socket.emit("steal_complete", { stolenCard, stealOptions, selectedPlayer });
+        setStealOptions(["", ""]);
+        removeCard(usedCard.index, true, stolenCard);
+        setUsedCard({ index: 0, card: "" });
+        setSelectedPlayer("");
+    }
+
+    function removeCard(index, discardIndicator = true, card) {
         // if a card gets stolen, it should not be discarded
-        socket.emit("discard", playerCurrentHand.current[index]);
+        if (discardIndicator) {
+            socket.emit("discard", playerCurrentHand.current[index]);
+        }
         playerCurrentHand.current.splice(index, 1);
         if (playerCurrentHand.current.length === 4) {
             setNewGame(true);
             socket.emit("setup_completed", gameId);
         }
-        else if (playerCurrentHand.current.length < 4) {
+        else if (playerCurrentHand.current.length < 4 && playerStatus.current !== 1) {
+            if (card !== undefined) {
+                playerCurrentHand.current.push(card);
+            }
+            else {
+                playerCurrentHand.current.push("flannel");
+            }
+        }
+        else if (playerCurrentHand.current.length < 3) {
             if (card !== undefined) {
                 playerCurrentHand.current.push(card);
             }
@@ -101,6 +130,7 @@ function Game() {
 
     useEffect(() => {
         if (usedCard.card !== "") {
+            usedCardReference.current = usedCard;
             let loseAltitude = false;
             if (usedCard.card === "kungfu") {
                 if (selectedPlayer !== "") {
@@ -115,8 +145,10 @@ function Game() {
                 }
             }
             else if (usedCard.card === "revolver") {
-                console.log(usedCard);
-                loseAltitude = true;
+                if (selectedPlayer !== "") {
+                    socket.emit("card_revolver", selectedPlayer);
+                    loseAltitude = true;
+                }
             }
             else if (usedCard.card === "poison") {
                 if (selectedPlayer !== "") {
@@ -125,8 +157,10 @@ function Game() {
                 }
             }
             else if (usedCard.card === "antidote") {
-                console.log(usedCard);
-                loseAltitude = true;
+                if (selectedPlayer !== "") {
+                    socket.emit("card_antidote");
+                    loseAltitude = true;
+                }
             }
             else if (usedCard.card === "key") {
                 console.log(usedCard);
@@ -153,35 +187,40 @@ function Game() {
         socket.on("user_list", (clients) => {
             const newClients = playerList.map((c , i) => {
                 if (clients[i] !== undefined) {
-                   return { socket: clients[i].id, name: clients[i].name };
+                   return { socket: clients[i].id, name: clients[i].name, status: clients[i].status };
                 }
                 else {
-                    return { socket: 0, name: "temp" };
+                    return { socket: 0, name: "temp", status: 0 };
                 }
             });
+            if (newClients.findIndex(c => c.status === 2) !== -1) {
+                poisonedPlayer.current = true;
+            }
+            else {
+                poisonedPlayer.current = false;
+            }
             setPlayerList(newClients);
         });
 
-        socket.on("draw_indexed_flannel", () => {
-            removeCard(usedCard.index);
-            setUsedCard({ index: 0, card: "" });
-            setSelectedPlayer("");
-        });
-
         socket.on("draw_flannel", () => {
-            removeCard(usedCard.index);
+            console.log(usedCard.index);
+            removeCard(usedCardReference.current.index);
             setUsedCard({ index: 0, card: "" });
             setSelectedPlayer("");
-        });
-
-        socket.on("replace_indexed_card", (data) => {
-            removeCard(data.index, data.card);
         });
 
         socket.on("replace_card", (card) => {
-            removeCard(usedCard.index, card);
+            removeCard(usedCardReference.current.index, true, card);
             setUsedCard({ index: 0, card: "" });
             setSelectedPlayer("");
+        });
+
+        socket.on("draw_indexed_flannel", (data) => {
+            removeCard(playerCurrentHand.current.indexOf(data.oldCard), data.discard);
+        });
+
+        socket.on("replace_indexed_card", (data) => {
+            removeCard(playerCurrentHand.current.indexOf(data.oldCard), data.discard, data.newCard);
         });
 
         socket.on("kungfu_request", (requestee) => {
@@ -191,7 +230,25 @@ function Game() {
 
         socket.on("spy_request", (requestee) => {
             const currentHand = playerCurrentHand.current;
-            socket.emit("spy_reply", { requestee, currentHand });
+            socket.emit("spy_reply", { requestee, currentHand, playerStatus });
+        });
+
+        socket.on("revolver_request", (requestee) => {
+            const currentHand = playerCurrentHand.current;
+            socket.emit("revolver_reply", { requestee, currentHand });
+        });
+
+        socket.on("revolver_select", (data) => {
+            const newOptions = revolverOptions.map((c, i) => {
+                return data.options[i];
+            });
+            setRevolverOptions(newOptions);
+            replyPlayer.current = data.requestee;
+        });
+
+        socket.on("revolver_injured", (card) => {
+            playerStatus.current = 1;
+            removeCard(playerCurrentHand.current.indexOf(card), false);
         });
 
         socket.on("steal_request", (requestee) => {
@@ -200,12 +257,15 @@ function Game() {
         });
 
         socket.on("steal_select", (data) => {
-            console.log(data);
             const newOptions = stealOptions.map((c, i) => {
                 return data.options[i];
             });
             setStealOptions(newOptions);
             replyPlayer.current = data.requestee;
+        });
+
+        socket.on("steal_update", (card) => {
+            removeCard(playerCurrentHand.current.indexOf(card), false);
         });
 
     }, [socket]);
@@ -287,7 +347,7 @@ function Game() {
                                     );
                                 }
                                 else if (player.socket === 0) {
-                                    return;
+                                    return null;
                                 }
                                 return (
                                     <div className="PlayerInfo" key={i}>
@@ -335,12 +395,43 @@ function Game() {
                             </>
                             : null
                         }
-                        {usedCard.card !== ""
+                        {revolverOptions[0] !== ""
+                            ?
+                            <>
+                                {revolverOptions.map((card, i) => {
+                                    return (
+                                        <div className="RevolverOption" key={i}>
+                                            <h2>{card}</h2>
+                                            <button onClick={() => { executeRevolver(card) }}>Take</button>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                            : null
+                        }
+                        {usedCard.card === "antidote"
+                            ?
+                            <>
+                                {playerList.map((player) => {
+                                    if (player.socket === 0 || player.status !== 2) {
+                                        return null;
+                                    }
+                                    return (
+                                        <div className="PlayerSelection" key={player.name}>
+                                            <h2>{player.name}</h2>
+                                            <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                            : null
+                        }
+                        {usedCard.card !== "" && usedCard.card !== "antidote"
                             ?
                             <>
                                 {playerList.map((player) => {
                                     if (player.socket === 0 || player.name === userName) {
-                                        return;
+                                        return null;
                                     }
                                     return (
                                         <div className="PlayerSelection" key={player.name}>
@@ -361,9 +452,10 @@ function Game() {
                                 return (
                                     <div className="YourInfo Block" key={i}>
                                         <h1>{userName}</h1>
+                                        <h1>Status: {player.status}</h1>
                                         {playerHand.map((card, i2) => {
                                             if (card === -1) {
-                                                return;
+                                                return null;
                                             }
                                             else if (card === "pchute") {
                                                 return (
@@ -406,7 +498,10 @@ function Game() {
                                                 return (
                                                     <div className="Card Revolver" key={i2}>
                                                         <h2>Revolver</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {playerCurrentHand.current.indexOf("bullet") !== -1
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
                                                     </div>
                                                 );
                                             }
@@ -429,7 +524,10 @@ function Game() {
                                                 return (
                                                     <div className="Card Antidote" key={i2}>
                                                         <h2>Antidote</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {poisonedPlayer.current
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
                                                     </div>
                                                 );
                                             }
@@ -479,6 +577,7 @@ function Game() {
                             return (
                                 <div className="PlayerInfo Block" key={i}>
                                     <h1>{player.name}</h1>
+                                    <h1>Status: {player.status}</h1>
                                 </div>
                             );
                         })}

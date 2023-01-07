@@ -39,6 +39,7 @@ io.on("connection", (socket) => {
     socket.on("join_room", async (data) => {
         socket.data.username = data.tempUserName;
         socket.data.room = data.gameId;
+        socket.data.status = 0; // 0 - healthy, 1 - injured, 2 - poisoned, 3 - injured and poisoned, 4 - out of game
         socket.join(data.gameId);
         const sockets = await io.in(data.gameId).fetchSockets();
         const clients = io.sockets.adapter.rooms.get(data.gameId);
@@ -46,7 +47,7 @@ io.on("connection", (socket) => {
         io.in(data.gameId).emit("user_log", numClients);
         const clientsArr = [...clients];
         const clientNames = clientsArr.map((id, i) => {
-            return { id: id, name: sockets[i].data.username }
+            return { id: id, name: sockets[i].data.username, status: sockets[i].data.status }
         });
         io.in(data.gameId).emit("user_list", clientNames);
     });
@@ -60,7 +61,7 @@ io.on("connection", (socket) => {
         if (numClients > 0) {
             const clientsArr = [...clients];
             const clientNames = clientsArr.map((id, i) => {
-                return { id: id, name: sockets[i].data.username }
+                return { id: id, name: sockets[i].data.username, status: sockets[i].data.status }
             });
             io.in(gameId).emit("user_list", clientNames);
         }
@@ -78,12 +79,12 @@ io.on("connection", (socket) => {
             if (kungfuIndex !== -1) {
                 io.to(data.requestee).emit("draw_flannel");
                 const newCard = gameStatus[socket.data.room].deck.pop();
-                io.to(socket.id).emit("replace_indexed_card", { card:newCard, index:kungfuIndex });
+                io.to(socket.id).emit("replace_indexed_card", { oldCard:"kungfu", discard:true, newCard:newCard });
             }
             else {
                 const newCard = gameStatus[socket.data.room].deck.pop();
                 io.to(data.requestee).emit("replace_card", newCard);
-                io.to(socket.id).emit("draw_indexed_flannel", data.currentHand.indexOf(shuffledHand[weaponIndex]));
+                io.to(socket.id).emit("draw_indexed_flannel", { oldCard:shuffledHand[weaponIndex], discard: true });
             }
         }
         else {
@@ -99,6 +100,32 @@ io.on("connection", (socket) => {
         console.log(data);
     });
 
+    socket.on("card_revolver", (selectedPlayer) => {
+        io.to(selectedPlayer).emit("revolver_request", socket.id);
+    });
+
+    socket.on("revolver_reply", (data) => {
+        if (data.playerStatus !== 1 || data.playerStatus !== 3) {
+            io.to(data.requestee).emit("revolver_select", { requestee: socket.id, options: data.currentHand });
+        }
+        else {
+            io.to(socket.id).emit("revolver_removed");
+        }
+    }); 
+
+    socket.on("revolver_complete", async (data) => {
+        const sockets = await io.in(socket.data.room).fetchSockets();
+        const clients = io.sockets.adapter.rooms.get(socket.data.room);
+        const clientsArr = [...clients];
+        const shotPlayer = clientsArr.indexOf(data.selectedPlayer);
+        sockets[shotPlayer].data.status = 1;
+        const clientNames = clientsArr.map((c, i) => {
+            return { id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status }
+        })
+        io.in(socket.data.room).emit("user_list", clientNames);
+        io.to(data.selectedPlayer).emit("revolver_injured", data.stolenCard)
+    });
+
     socket.on("card_steal", (selectedPlayer) => {
         io.to(selectedPlayer).emit("steal_request", socket.id);
     });
@@ -109,9 +136,22 @@ io.on("connection", (socket) => {
         io.to(data.requestee).emit("steal_select", { requestee:socket.id, options }) 
     });
 
-    /*socket.on("steal_complete", (data) => {
+    socket.on("steal_complete", (data) => {
+        io.to(data.selectedPlayer).emit("steal_update", data.stolenCard);
+    });
 
-    });*/
+    socket.on("card_poison", async (selectedPlayer) => {
+        const sockets = await io.in(socket.data.room).fetchSockets();
+        const clients = io.sockets.adapter.rooms.get(socket.data.room);
+        const clientsArr = [...clients];
+        const poisonedPlayer = clientsArr.indexOf(selectedPlayer);
+        sockets[poisonedPlayer].data.status = 2;
+        const clientNames = clientsArr.map((c, i) => { 
+            return { id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status }
+        })
+        io.in(socket.data.room).emit("user_list", clientNames);
+        io.to(socket.id).emit("draw_flannel");
+    });
 
     //socket.on("register_user", (data) => {
     //    const userData = { id: socket.id, name: data.tempUserName };
@@ -249,7 +289,6 @@ io.on("connection", (socket) => {
             const player3Hand = deck.splice(0, 6);
             io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
             gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [] };
-            console.log(gameStatus[gameId].deck);
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else {
@@ -266,7 +305,7 @@ io.on("connection", (socket) => {
                 const index = clientsArr.indexOf(socket.id);
                 clientsArr.splice(index, 1);
                 const clientNames = clientsArr.map((id, i) => {
-                    return { id: id, name: sockets[i].data.username }
+                    return { id: id, name: sockets[i].data.username, status: sockets[i].data.status }
                 });
                 io.in(room).emit("user_list", clientNames);
                 const numClients = clients ? clients.size : 0;
