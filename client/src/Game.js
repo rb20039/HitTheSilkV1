@@ -12,64 +12,91 @@ function Game() {
     const [tempUserName, setTempUserName] = useState("");
     const [message, setMessage] = useState("");
     const [userCount, setUserCount] = useState("");
+    const [tradee, setTradee] = useState("");
     const [selectedPlayer, setSelectedPlayer] = useState("");
+    const [secondSelectedPlayer, setSecondSelectedPlayer] = useState("");
     const [usedCard, setUsedCard] = useState({ index: 0, card: "" });
     const [altitude, setAltitude] = useState(0);
     const [playerList, setPlayerList] = useState([{
-            socket: "temp",
-            name: "temp1",
-            status: 0
-        },
-        {
-            socket: "temp",
-            name: "temp2",
-            status: 0
-        },
-        {
-            socket: "temp",
-            name: "temp3",
-            status: 0
-        },
-        {
-            socket: "temp",
-            name: "temp4",
-            status: 0
-        },
-        {
-            socket: "temp",
-            name: "temp5",
-            status: 0
-        },
-        {
-            socket: "temp",
-            name: "temp6",
-            status: 0
-        }
+        socket: "temp",
+        name: "temp1",
+        status: 0,
+        firsthand: 0,
+        secondhand: 0
+    },
+    {
+        socket: "temp",
+        name: "temp2",
+        status: 0,
+        firsthand: 0,
+        secondhand: 0
+    },
+    {
+        socket: "temp",
+        name: "temp3",
+        status: 0,
+        firsthand: 0,
+        secondhand: 0
+    },
+    {
+        socket: "temp",
+        name: "temp4",
+        status: 0,
+        firsthand: 0,
+        secondhand: 0
+    },
+    {
+        socket: "temp",
+        name: "temp5",
+        status: 0,
+        firsthand: 0,
+        secondhand: 0
+    },
+    {
+        socket: "temp",
+        name: "temp6",
+        status: 0,
+        firsthand: 0,
+        secondhand: 0
+    }
     ]);
     const [lockBox, setLockBox] = useState(["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"]);
     const [playerHand, setPlayerHand] = useState(["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"]);
-    // let currentHand = ["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"];
+    const [otherPlayerHand, setOtherPlayerHand] = useState(["temp1", "temp2", "temp3", "temp4"]);
+    const [drawnCard, setDrawnCards] = useState(["temp1", "temp2", "temp3", "temp4"]);
     const [revolverOptions, setRevolverOptions] = useState(["", "", "", ""]);
     const [stealOptions, setStealOptions] = useState(["", ""]);
     const [chatLog, updateChatLog] = useState([]);
     const playerStatus = useRef(0);
+    const altitudeReference = useRef(0);
     const playerCurrentHand = useRef([]);
     const replyPlayer = useRef("");
     const poisonedPlayer = useRef(false);
     const usedCardReference = useRef({ index: 0, card: "" });
+    const actionTaken = useRef(false);
+    const handcuffPairs = useRef([]);
     const [newGame, setNewGame] = useState(false);
+    const [playerTurn, setPlayerTurn] = useState(0);
+    const [hasDrawn, setHasDrawn] = useState(false);
+    const [initiateVote, setInitiateVote] = useState(false);
+    const [changeInitiated, setChangeInitiated] = useState(false);
+    const [tradeSelected, setTradeSelected] = useState(false);
     const [gameReady, setGameReady] = useState(false);
     const [returnToHomepage, callHomepage] = useState(false);
     const [activeGame, setActiveGame] = useState(false);
     const { gameId } = useParams();
     const sendMessage = () => {
         socket.emit("send_message", { userName, message, gameId });
-        updateChatLog((chatLog) => [...chatLog, { name:userName, msg:message }]);
+        updateChatLog((chatLog) => [...chatLog, { name: userName, msg: message }]);
     };
+
+    const endTurn = () => {
+        socket.emit("end_turn", { order: playerTurn, action: actionTaken.current });
+    }
 
     const updateUserName = () => {
         setUserName(tempUserName);
-    //  socket.emit("register_user", { tempUserName, gameId });
+        //  socket.emit("register_user", { tempUserName, gameId });
         socket.emit("join_room", { tempUserName, gameId });
     }
 
@@ -78,7 +105,15 @@ function Game() {
         // socket.emit("shuffle");
     }
 
-    const executeRevolver = (stolenCard) => { 
+    const takeFromLockBox = (card) => {
+        socket.emit("key_complete", card);
+        setLockBox(["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"]);
+        removeCard(usedCard.index, true, card);
+        setUsedCard({ index: 0, card: "" });
+        setSelectedPlayer("");
+    }
+
+    const executeRevolver = (stolenCard) => {
         socket.emit("revolver_complete", { stolenCard, selectedPlayer });
         setRevolverOptions(["", "", "", ""]);
         removeCard(playerCurrentHand.current.indexOf("bullet"), true, stolenCard);
@@ -94,14 +129,63 @@ function Game() {
         setSelectedPlayer("");
     }
 
+    const drawCard = (card) => {
+        setChangeInitiated(true);
+        setUsedCard(card);
+        socket.emit("initiate_draw", altitude);
+    }
+
+    const removeCuffs = (link) => {
+        setSelectedPlayer(link.firsthand);
+        setSecondSelectedPlayer(link.secondhand);
+    }
+
+    const initiateTrade = (player) => {
+        socket.emit("initiate_trade", player);
+        setTradee(player);
+    }
+
+    const completeDraw = (card) => {
+        setHasDrawn(true);
+        drawnCard.splice(drawnCard.indexOf(card), 1);
+        if (usedCard.index === "flannel") {
+            removeCard(usedCard.index, false, card);
+        }
+        else {
+            removeCard(usedCard.index, true, card);
+        }
+        drawnCard.forEach((c) => {
+            if (c !== 0) {
+                socket.emit("discard", c);
+            }
+        });
+        setUsedCard({ index: 0, card: "" });
+        setChangeInitiated(false);
+        setDrawnCards(["temp1", "temp2", "temp3", "temp4"]);
+    }
+
+    const setupTrade = (card, index) => {
+        setTradeSelected(true);
+        usedCardReference.current = ({ index: index, card: card });
+        socket.emit("setup_trade", card);
+    }
+
+    const cancelTrade = () => {
+        socket.emit("cancel_trade", tradee);
+        setTradee("");
+        setTradeSelected(false);
+    }
+
     function removeCard(index, discardIndicator = true, card) {
         // if a card gets stolen, it should not be discarded
+        actionTaken.current = true;
         if (discardIndicator) {
             socket.emit("discard", playerCurrentHand.current[index]);
         }
         playerCurrentHand.current.splice(index, 1);
         if (playerCurrentHand.current.length === 4) {
             setNewGame(true);
+            actionTaken.current = false;
             socket.emit("setup_completed", gameId);
         }
         else if (playerCurrentHand.current.length < 4 && playerStatus.current !== 1) {
@@ -131,66 +215,66 @@ function Game() {
     useEffect(() => {
         if (usedCard.card !== "") {
             usedCardReference.current = usedCard;
-            let loseAltitude = false;
             if (usedCard.card === "kungfu") {
                 if (selectedPlayer !== "") {
                     socket.emit("card_kungfu", selectedPlayer);
-                    loseAltitude = true;
                 }
             }
             else if (usedCard.card === "spy") {
                 if (selectedPlayer !== "") {
                     socket.emit("card_spy", selectedPlayer);
-                    loseAltitude = true;
                 }
             }
             else if (usedCard.card === "revolver") {
                 if (selectedPlayer !== "") {
                     socket.emit("card_revolver", selectedPlayer);
-                    loseAltitude = true;
                 }
             }
             else if (usedCard.card === "poison") {
                 if (selectedPlayer !== "") {
                     socket.emit("card_poison", selectedPlayer);
-                    loseAltitude = true;
                 }
             }
             else if (usedCard.card === "antidote") {
                 if (selectedPlayer !== "") {
-                    socket.emit("card_antidote");
-                    loseAltitude = true;
+                    socket.emit("card_antidote", selectedPlayer);
                 }
             }
             else if (usedCard.card === "key") {
-                console.log(usedCard);
-                loseAltitude = true;
+                if (selectedPlayer === "lockbox") {
+                    socket.emit("card_key", { selectedPlayer, secondSelectedPlayer });
+                }
+                else if (secondSelectedPlayer !== "") {
+                    socket.emit("card_key", { selectedPlayer, secondSelectedPlayer });
+                    setSecondSelectedPlayer("");
+                }
             }
             else if (usedCard.card === "handcuffs") {
-                console.log(usedCard);
-                loseAltitude = true;
+                if (selectedPlayer !== "") {
+                    if (secondSelectedPlayer !== "") {
+                        socket.emit("card_handcuffs", { selectedPlayer, secondSelectedPlayer });
+                        setSecondSelectedPlayer("");
+                    }
+                }
             }
             else if (usedCard.card === "steal") {
                 if (selectedPlayer !== "") {
                     socket.emit("card_steal", selectedPlayer);
-                    loseAltitude = true;
-                }
-                console.log(usedCard);  
-            }
-            if (loseAltitude) {
-                setAltitude(altitude - 500);
+                } 
             }
         }
-    }, [usedCard, selectedPlayer]);
+    }, [usedCard, selectedPlayer, secondSelectedPlayer]);
 
     useEffect(() => {
         socket.on("user_list", (clients) => {
-            const newClients = playerList.map((c , i) => {
+            const newClients = playerList.map((c, i) => {
                 if (clients[i] !== undefined) {
-                   return { socket: clients[i].id, name: clients[i].name, status: clients[i].status };
+                    return { socket: clients[i].id, name: clients[i].name, status: clients[i].status, firsthand: clients[i].firsthand, secondhand: clients[i].secondhand };
                 }
                 else {
-                    return { socket: 0, name: "temp", status: 0 };
+                    return {
+                        socket: 0, name: "temp", status: 0, firsthand: 0, secondhand: 0
+                    };
                 }
             });
             if (newClients.findIndex(c => c.status === 2) !== -1) {
@@ -203,7 +287,6 @@ function Game() {
         });
 
         socket.on("draw_flannel", () => {
-            console.log(usedCard.index);
             removeCard(usedCardReference.current.index);
             setUsedCard({ index: 0, card: "" });
             setSelectedPlayer("");
@@ -230,7 +313,19 @@ function Game() {
 
         socket.on("spy_request", (requestee) => {
             const currentHand = playerCurrentHand.current;
-            socket.emit("spy_reply", { requestee, currentHand, playerStatus });
+            socket.emit("spy_reply", { requestee, currentHand });
+        });
+
+        socket.on("spy_reveal", (otherCurrentHand) => {
+            const newOtherHand = otherPlayerHand.map((c, i) => {
+                if (otherCurrentHand[i] === undefined) {
+                    return 0;
+                }
+                else {
+                    return otherCurrentHand[i];
+                }
+            });
+            setOtherPlayerHand(newOtherHand);
         });
 
         socket.on("revolver_request", (requestee) => {
@@ -251,6 +346,27 @@ function Game() {
             removeCard(playerCurrentHand.current.indexOf(card), false);
         });
 
+        socket.on("key_lockbox", (lockbox) => {
+            const newLockBox = lockBox.map((c, i) => {
+                if (lockbox[i] === undefined) {
+                    return 0;
+                }
+                else {
+                    return lockbox[i];
+                }
+            });
+            setLockBox(newLockBox);
+        });
+
+        socket.on("key_release", (data) => {
+            const pairIndex = handcuffPairs.indexOf(data);
+            handcuffPairs.splice(pairIndex, 1);
+        });
+
+        socket.on("handcuffs_list", (data) => {
+            handcuffPairs.current.push({ firsthand: data.firsthand, secondhand: data.secondhand });
+        });
+
         socket.on("steal_request", (requestee) => {
             const currentHand = playerCurrentHand.current;
             socket.emit("steal_reply", { requestee, currentHand });
@@ -266,6 +382,26 @@ function Game() {
 
         socket.on("steal_update", (card) => {
             removeCard(playerCurrentHand.current.indexOf(card), false);
+        });
+
+        socket.on("complete_trade", (card) => {
+            removeCard(usedCardReference.current.index, false, card);
+            setTradee("");
+            setTradeSelected(false);
+            actionTaken.current = true;
+        });
+
+        socket.on("decline_trade", () => {
+            setTradee("");
+            setTradeSelected(false);
+        });
+
+        socket.on("lose_altitude", () => {
+            altitudeReference.current = altitudeReference.current - 500;
+            setAltitude(altitudeReference.current);
+            if (altitudeReference.current === 21000 || altitudeReference.current === 17000 || altitudeReference.current === 13000 || altitudeReference.current === 9000 || altitudeReference.current === 5000) {
+                setInitiateVote(true);
+            }
         });
 
     }, [socket]);
@@ -291,17 +427,40 @@ function Game() {
 
         socket.on("setup_game", (data) => {
             if (data.numClients !== 0) {
+                setPlayerTurn(data.firstPlayer);
                 setActiveGame(true);
                 if (data.numClients === 3) {
+                    altitudeReference.current = 16000;
                     setAltitude(16000);
                 }
                 else {
+                    altitudeReference.current = 16000 + ((data.numClients - 3) * 3000);
                     setAltitude(16000 + ((data.numClients - 3) * 3000));
                 }
             }
             else {
                 setActiveGame(false);
             }
+        });
+
+        socket.on("draw_deck", (sendCards) => {
+            const drawn = drawnCard.map((c, i) => {
+                if (sendCards[i] !== undefined) {
+                    return sendCards[i];
+                }
+                return 0;
+            });
+            setDrawnCards(drawn);
+        });
+
+        socket.on("trade_offer", (offerer) => {
+            setTradee(offerer);
+        });
+
+        socket.on("next_turn", (order) => {
+            setPlayerTurn(order);
+            setHasDrawn(false);
+            actionTaken.current = false;
         });
 
         socket.on("done_discarding", () => {
@@ -380,7 +539,83 @@ function Game() {
             }
             if (newGame) {
                 return (
-                    <div className="ActiveGame">
+                    <div className="ActiveGame"> 
+                        {tradee !== ""
+                            ?
+                            <>
+                                <div className="Trade">
+                                    <h1>Trading with {tradee}</h1>
+                                    <button onClick={() => { cancelTrade() }}>Cancel</button>
+                                    {!tradeSelected
+                                        ?
+                                        <>
+                                            {playerHand.map((card, i) => {
+                                                if (card === -1 || card === undefined) {
+                                                    return null;
+                                                }
+                                                else {
+                                                    return (
+                                                        <div>
+                                                            <h1>{card}</h1>
+                                                            <button onClick={() => { setupTrade(card, i) }}>Select</button>
+                                                        </div>
+                                                    );
+                                                }
+                                            })}
+                                        </>
+                                        : <h1>Waiting for other players response...</h1>
+                                    }
+                                </div>
+                            </>
+                            : null
+                        }
+                        {playerList[playerTurn].name === userName
+                            ?
+                            <>
+                                <h1>It is your turn!</h1>
+                                <button onClick={() => { endTurn() }}>End turn</button>
+                            </>
+                            : <h1>It is {playerList[playerTurn].name} turn!</h1>
+                        }
+                        {otherPlayerHand[0] !== "temp1"
+                            ?
+                            <>
+                                <div className="OtherPlayerHand">
+                                    <button onClick={() => { setOtherPlayerHand(["temp1", "temp2", "temp3", "temp4"]) }}>Hide</button>
+                                    {otherPlayerHand.map((card, i) => {
+                                        return (
+                                            <h3 key={i}>{card}</h3>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                            : null
+                        }
+                        {initiateVote
+                            ? <h1>It's time to vote!</h1>
+                            : null
+                        }
+                        {lockBox[0] !== "temp1"
+                            ?
+                            <>
+                                <div className="LockBox">
+                                    {lockBox.map((card, i) => {
+                                        if (card !== 0) {
+                                            return (
+                                                <div className="LockBox-Card" key={i}>
+                                                    <h3>{card}</h3>
+                                                    <button onClick={() => { takeFromLockBox(card) }}>Take</button>
+                                                </div>
+                                            );
+                                        }
+                                        else {
+                                            return null;
+                                        }
+                                    })}
+                                </div>
+                            </>
+                            : null
+                        }
                         {stealOptions[0] !== "" 
                             ?
                             <>
@@ -409,7 +644,24 @@ function Game() {
                             </>
                             : null
                         }
-                        {usedCard.card === "antidote"
+                        {changeInitiated === true && drawnCard[0] !== "temp1"
+                            ?
+                            <>
+                                {drawnCard.map((card, i) => {
+                                    if (card === 0) {
+                                        return null;
+                                    }
+                                    return (
+                                        <div className="DrawnCard" key={i}>
+                                            <h2>{card}</h2>
+                                            <button onClick={() => {completeDraw(card)} }>Take</button>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                            : null
+                        }
+                        {usedCard.card === "antidote" && changeInitiated === false
                             ?
                             <>
                                 {playerList.map((player) => {
@@ -426,7 +678,74 @@ function Game() {
                             </>
                             : null
                         }
-                        {usedCard.card !== "" && usedCard.card !== "antidote"
+                        {usedCard.card === "poison" && changeInitiated === false
+                            ?
+                            <>
+                                {playerList.map((player) => {
+                                    if (player.socket === 0 || player.status !== 0) {
+                                        return null;
+                                    }
+                                    return (
+                                        <div className="PlayerSelection" key={player.name}>
+                                            <h2>{player.name}</h2>
+                                            <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                            : null
+                        }
+                        {usedCard.card === "key" && changeInitiated === false
+                            ?
+                            <>
+                                <h2>Lockbox</h2>
+                                <button onClick={() => { setSelectedPlayer("lockbox") }}>Select</button>
+                                {handcuffPairs.current.map((c, i) => {
+                                    return (
+                                        <div className="HandcuffLink" key={i}>
+                                            <h1>{playerList[playerList.findIndex(i => i.socket === c.firsthand)].name}-{playerList[playerList.findIndex(i => i.socket === c.secondhand)].name}</h1>
+                                            <button onClick={() => { removeCuffs(c) }}>Release</button>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                            : null
+                        }
+                        {usedCard.card === "handcuffs" && selectedPlayer === "" && changeInitiated === false
+                            ?
+                            <>
+                                {playerList.map((player) => {
+                                    if ((player.firsthand !== 0 && player.secondhand !== 0) || player.socket === 0) {
+                                        return null;
+                                    }
+                                    return (
+                                        <div className="PlayerSelection" key={player.name}>
+                                            <h2>{player.name}</h2>
+                                            <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                            : null
+                        }
+                        {usedCard.card === "handcuffs" && selectedPlayer !== "" && changeInitiated === false
+                            ?
+                            <>
+                                {playerList.map((player) => {
+                                    if (player.socket === 0 || player.socket === selectedPlayer || (player.firsthand !== 0 && player.secondhand !== 0)) {
+                                        return null;
+                                    }
+                                    return (
+                                        <div className="PlayerSelection" key={player.name}>
+                                            <h2>{player.name}</h2>
+                                            <button onClick={() => { setSecondSelectedPlayer(player.socket) }}>Select</button>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                            : null
+                        }
+                        {usedCard.card !== "" && usedCard.card !== "poison" && usedCard.card !== "handcuffs" && usedCard.card !== "antidote" && selectedPlayer === "" && usedCard.card !== "key" && changeInitiated === false
                             ?
                             <>
                                 {playerList.map((player) => {
@@ -454,7 +773,7 @@ function Game() {
                                         <h1>{userName}</h1>
                                         <h1>Status: {player.status}</h1>
                                         {playerHand.map((card, i2) => {
-                                            if (card === -1) {
+                                            if (card === -1 || card === undefined) {
                                                 return null;
                                             }
                                             else if (card === "pchute") {
@@ -475,7 +794,10 @@ function Game() {
                                                 return (
                                                     <div className="Card KungFu" key={i2}>
                                                         <h2>Kung Fu</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {playerList[playerTurn].name === userName
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
                                                     </div>
                                                 );
                                             }
@@ -490,7 +812,10 @@ function Game() {
                                                 return (
                                                     <div className="Card Spy" key={i2}>
                                                         <h2>Spy</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {playerList[playerTurn].name === userName
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
                                                     </div>
                                                 );
                                             }
@@ -498,7 +823,7 @@ function Game() {
                                                 return (
                                                     <div className="Card Revolver" key={i2}>
                                                         <h2>Revolver</h2>
-                                                        {playerCurrentHand.current.indexOf("bullet") !== -1
+                                                        {playerCurrentHand.current.indexOf("bullet") !== -1 && playerList[playerTurn].name === userName
                                                             ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
                                                             : null
                                                         }
@@ -516,7 +841,10 @@ function Game() {
                                                 return (
                                                     <div className="Card Poison" key={i2}>
                                                         <h2>Poison</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {playerList[playerTurn].name === userName
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
                                                     </div>
                                                 );
                                             }
@@ -524,7 +852,7 @@ function Game() {
                                                 return (
                                                     <div className="Card Antidote" key={i2}>
                                                         <h2>Antidote</h2>
-                                                        {poisonedPlayer.current
+                                                        {poisonedPlayer.current && playerList[playerTurn].name === userName
                                                             ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
                                                             : null
                                                         }
@@ -535,7 +863,11 @@ function Game() {
                                                 return (
                                                     <div className="Card Key" key={i2}>
                                                         <h2>Key</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {playerList[playerTurn].name === userName
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
+                                                        
                                                     </div>
                                                 );
                                             }
@@ -550,7 +882,10 @@ function Game() {
                                                 return (
                                                     <div className="Card Handcuffs" key={i2}>
                                                         <h2>Handcuffs</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {playerList[playerTurn].name === userName
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
                                                     </div>
                                                 );
                                             }
@@ -558,13 +893,24 @@ function Game() {
                                                 return (
                                                     <div className="Card Steal" key={i2}>
                                                         <h2>Steal</h2>
-                                                        <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                        {playerList[playerTurn].name === userName
+                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                            : null
+                                                        }
+                                                        {playerList[playerTurn].name === userName && !hasDrawn
+                                                            ? <button onClick={() => { drawCard({ index: i2, card: card}) }}>Change</button>
+                                                            : null
+                                                        }
                                                     </div>
                                                 );
                                             }
                                             return (
                                                 <div className="Card" key={i2}>
                                                     <h2>{card}</h2>
+                                                    {playerList[playerTurn].name === userName && !hasDrawn
+                                                        ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                        : null
+                                                    }
                                                 </div>
                                             );
                                         })}
@@ -577,7 +923,12 @@ function Game() {
                             return (
                                 <div className="PlayerInfo Block" key={i}>
                                     <h1>{player.name}</h1>
+                                    <button onClick={() => { initiateTrade(player.socket) }}>Trade</button>
                                     <h1>Status: {player.status}</h1>
+                                    {player.status === 3
+                                        ? <h1>Player is linked to {player.firsthand !== 0 ? playerList[playerList.findIndex(i => i.socket === player.firsthand)].name : playerList[playerList.findIndex(i => i.socket === player.secondhand)].name}</h1> 
+                                        : null
+                                    }
                                 </div>
                             );
                         })}
