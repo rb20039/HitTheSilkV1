@@ -109,3 +109,67 @@ body {
 .Chat ul li {
     list-style: none;
 }
+
+.UserName {
+    position: absolute;
+    top: 40%;
+    left: 40%;
+}
+
+.root {
+    position: relative;
+}
+
+.Trade {
+    position: absolute;
+    background: lightblue;
+    width: 100vw;
+    height: 100vh;
+}
+.Trade h1 {
+    position: relative;
+    left: 40%;
+} 
+.Trade button {
+    position: relative;
+    left: 40%;
+ }
+
+.LockBox {
+    position: absolute;
+    background: lightblue;
+    width: 100vw;
+    height: 100vh;
+}
+
+.Vote {
+    position: absolute;
+    background: lightblue;
+    width: 100vw;
+    height: 100vh;
+}
+
+.DrawnAll {
+    position: absolute;
+    background: lightblue;
+    width: 100vw;
+    height: 100vh;
+}
+
+.RevolverBox {
+    position: absolute;
+    background: lightblue;
+    width: 100vw;
+    height: 100vh;
+}
+
+.StealBox {
+    position: absolute;
+    background: lightblue;
+    width: 100vw;
+    height: 100vh;
+}
+
+.PlaneField li {
+    list-style: none;
+}

@@ -53,79 +53,97 @@ const remakeDeck = (gameId) => {
 
 io.on("connection", (socket) => {
 
+    /* Event join_room is called whenver a user sets their username and joins a room. The event updates the users socket
+     by setting its username, connected room, current player status, and first and second hand statuses. After succesfully joining
+     the currently logged in users get the updated list of connected users in the room. */
     socket.on("join_room", async (data) => {
         socket.data.username = data.tempUserName;
         socket.data.room = data.gameId;
         socket.data.status = 0;
-        socket.data.firsthand = 0;
-        socket.data.secondhand = 0;
-        /* 0 - healthy, 1 - injured, 2 - poisoned, 3 - handcuffed, 
+        /* 0 - healthy, 1 - injured, 2 - poisoned, 3 - handcuffed,
          * 4 - handcuffed x2, 5 - injured and poisoned, 6 - injured and hancuffed, 
          * 7 - injured and handcuffed x2, 8 - poisoned and handcuffed, 9 - poisoned and handcuffed x2,
          * 10 - injured, poisoned, and handcuffed, 11 - injured, poisoned, and handcuffed x2, 12 - out of game */
+        socket.data.firsthand = 0;
+        socket.data.secondhand = 0;
         socket.join(data.gameId);
         const sockets = await io.in(data.gameId).fetchSockets();
         const clients = io.sockets.adapter.rooms.get(data.gameId);
         const numClients = clients ? clients.size : 0;
-        io.in(data.gameId).emit("user_log", numClients);
+        io.in(data.gameId).emit("user_log", numClients); // sends an event to update the number of currently connected players in room
         const clientsArr = [...clients];
         const clientNames = clientsArr.map((id, i) => {
-            return { id: id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+            return {
+                id: id, name: sockets[i].data.username, status: sockets[i].data.status,
+                firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+            }
         });
-        io.in(data.gameId).emit("user_list", clientNames);
+        io.in(data.gameId).emit("user_list", clientNames); // sends an event to update the list of connected players and their different attributes
     });
 
+    /* Event leave_room is called whenver a user presses the Leave room button. The event disconnects the current socket from the game room. 
+     After leaving the currently logged in users get the updated list of connected users in the room. */
     socket.on("leave_room", async (gameId) => {
         socket.leave(gameId);
         const sockets = await io.in(gameId).fetchSockets();
         const clients = io.sockets.adapter.rooms.get(gameId);
         const numClients = clients ? clients.size : 0;
-        io.in(gameId).emit("user_log", numClients);
+        io.in(gameId).emit("user_log", numClients); // sends an event to update the number of currently connected players in room
         if (numClients > 0) {
             const clientsArr = [...clients];
             const clientNames = clientsArr.map((id, i) => {
-                return { id: id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+                return {
+                    id: id, name: sockets[i].data.username, status: sockets[i].data.status,
+                    firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+                }
             });
-            io.in(gameId).emit("user_list", clientNames);
+            io.in(gameId).emit("user_list", clientNames); // sends an event to update the list of connected players and their different attributes
         }
     });
 
+    /* Event card_kungfu is called whenever a user plays the Kung Fu action. The event requests the current hand of the specified player. */
     socket.on("card_kungfu", (selectedPlayer) => {
         io.to(selectedPlayer).emit("kungfu_request", socket.id);
     });
 
+    /* Event kungfu_reply is called when the current of hand of kungfu requested specified player is sent to the server. Based on the specified
+     players current hand either a weapon can get discarded and a flannel is drawn, a kungfu is discarded and a flannel is drawn because the 
+     specified player does not have a weapon, or both players discard kungfu cards deflecting one another. */
     socket.on("kungfu_reply", async (data) => {
-        const shuffledHand = shuffleCards(data.currentHand);
-        const weaponIndex = shuffledHand.indexOf("revolver") > shuffledHand.indexOf("knife") ? shuffledHand.indexOf("revolver") : shuffledHand.indexOf("knife");
-        if (weaponIndex !== -1) {
+        const shuffledHand = shuffleCards(data.currentHand); // shuffle hand to determine randomly which card to discard
+        const weaponIndex = shuffledHand.indexOf("revolver") > shuffledHand.indexOf("knife") 
+            ? shuffledHand.indexOf("revolver") : shuffledHand.indexOf("knife"); // in case of multiple weapons, based on shuffle discard either revolver or knife
+        if (weaponIndex !== -1) { // if the selected player has a weapon
             const kungfuIndex = data.currentHand.indexOf("kungfu");
-            if (kungfuIndex !== -1) {
+            if (kungfuIndex !== -1) { // if the selected player has a kungfu card the selected player draws a card and the player who played the kungfu from the start draws a flannel
                 io.to(data.requestee).emit("draw_flannel");
                 if (gameStatus[socket.data.room].deck.length < 1) {
-                    await remakeDeck(socket.data.room);
+                    await remakeDeck(socket.data.room); // if the draw pile is empty, shuffle the discarded cards back in deck
                 }
                 const newCard = gameStatus[socket.data.room].deck.pop();
                 io.to(socket.id).emit("replace_indexed_card", { oldCard: "kungfu", discard: true, newCard: newCard });
             }
-            else {
+            else { // discard one of the selected players weapons and kungfu action player draws a new card from deck
                 if (gameStatus[socket.data.room].deck.length < 1) {
-                    await remakeDeck(socket.data.room);
+                    await remakeDeck(socket.data.room); // if the draw pile is empty, shuffle the discarded cards back in deck
                 }
                 const newCard = gameStatus[socket.data.room].deck.pop();
                 io.to(data.requestee).emit("replace_card", newCard);
                 io.to(socket.id).emit("draw_indexed_flannel", { oldCard: shuffledHand[weaponIndex], discard: true });
             }
         }
-        else {
+        else { // if the player misses the kungfu card, they draw a flannel
             io.to(data.requestee).emit("draw_flannel");
         }
-        io.to(socket.data.room).emit("lose_altitude");
+        io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
     });
 
+    /* Event card_spy is called whenever a user plays the Spy action. The event request the current hand of the specified player. */
     socket.on("card_spy", (selectedPlayer) => {
         io.to(selectedPlayer).emit("spy_request", socket.id);
     });
 
+    /* Event spy_reply is called whenever a user send an answer from the spy request. The event send the requested card list to the card user. */
     socket.on("spy_reply", async (data) => {
         io.to(data.requestee).emit("spy_reveal", data.currentHand);
         if (gameStatus[socket.data.room].deck.length < 1) {
@@ -133,13 +151,17 @@ io.on("connection", (socket) => {
         }
         const newCard = gameStatus[socket.data.room].deck.pop();
         io.to(data.requestee).emit("replace_card", newCard);
-        io.to(socket.data.room).emit("lose_altitude");
+        io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
     });
 
+    /* Event card_revolver is called whenever a user plays the Revolver action. The event sends a request to the selected
+     * player for their current hand*/
     socket.on("card_revolver", (selectedPlayer) => {
         io.to(selectedPlayer).emit("revolver_request", socket.id);
     });
 
+    /* Event revolver_reply is called whenever the server receives the reply from the revolver request. 
+     * The event updates the player status and remove a card from the taken player */
     socket.on("revolver_reply", (data) => {
         if (data.playerStatus !== 1 || data.playerStatus !== 3) {
             io.to(data.requestee).emit("revolver_select", { requestee: socket.id, options: data.currentHand });
@@ -156,13 +178,17 @@ io.on("connection", (socket) => {
         const shotPlayer = clientsArr.indexOf(data.selectedPlayer);
         sockets[shotPlayer].data.status = 1;
         const clientNames = clientsArr.map((c, i) => {
-            return { id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+            return {
+                id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status,
+                firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+            }
         })
         io.in(socket.data.room).emit("user_list", clientNames);
         io.to(data.selectedPlayer).emit("revolver_injured", data.stolenCard)
-        io.to(socket.data.room).emit("lose_altitude");
+        io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
     });
 
+    /* Event card_poison is called whenever a user plays the Poison action. */
     socket.on("card_poison", async (selectedPlayer) => {
         const sockets = await io.in(socket.data.room).fetchSockets();
         const clients = io.sockets.adapter.rooms.get(socket.data.room);
@@ -170,13 +196,17 @@ io.on("connection", (socket) => {
         const poisonedPlayer = clientsArr.indexOf(selectedPlayer);
         sockets[poisonedPlayer].data.status = 2;
         const clientNames = clientsArr.map((c, i) => {
-            return { id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+            return {
+                id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status,
+                firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+            }
         })
         io.in(socket.data.room).emit("user_list", clientNames);
         io.to(socket.id).emit("draw_flannel");
-        io.to(socket.data.room).emit("lose_altitude");
+        io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
     });
 
+    /* Event card_antidote is called whenever a user plays the Antidote action. */
     socket.on("card_antidote", async (selectedPlayer) => {
         const sockets = await io.in(socket.data.room).fetchSockets();
         const clients = io.sockets.adapter.rooms.get(socket.data.room);
@@ -184,13 +214,17 @@ io.on("connection", (socket) => {
         const curedPlayer = clientsArr.indexOf(selectedPlayer);
         sockets[curedPlayer].data.status = 0;
         const clientNames = clientsArr.map((c, i) => {
-            return { id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+            return {
+                id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status,
+                firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+            }
         });
         io.in(socket.data.room).emit("user_list", clientNames);
         io.to(socket.id).emit("draw_flannel");
-        io.to(socket.data.room).emit("lose_altitude");
+        io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
     });
 
+    /* Event card_key is called whenever a user plays the Key action. */
     socket.on("card_key", async (data) => {
         const sockets = await io.in(socket.data.room).fetchSockets();
         if (data.selectedPlayer == "lockbox") {
@@ -205,19 +239,22 @@ io.on("connection", (socket) => {
             sockets[uncuffedPlayer1].data.status = 0;
             sockets[uncuffedPlayer2].data.status = 0;
             const clientNames = clientsArr.map((c, i) => {
-                return { id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+                return {
+                    id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status,
+                    firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+                }
             });
             io.in(socket.data.room).emit("key_release", {firsthand:data.selectedPlayer, secondhand:data.secondSelectedPlayer});
             io.in(socket.data.room).emit("user_list", clientNames);
             io.to(socket.id).emit("draw_flannel");
-            io.to(socket.data.room).emit("lose_altitude");
+            io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
         }
     });
 
     socket.on("key_complete", (card) => {
         const cardIndex = gameStatus[socket.data.room].lockbox.indexOf(card);
         gameStatus[socket.data.room].lockbox.splice(cardIndex, 1);
-        io.to(socket.data.room).emit("lose_altitude");
+        io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
     });
 
     socket.on("card_handcuffs", async (data) => {
@@ -241,12 +278,15 @@ io.on("connection", (socket) => {
         sockets[cuffPlayer1].data.status = 3;
         sockets[cuffPlayer2].data.status = 3;
         const clientNames = clientsArr.map((c, i) => {
-            return { id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+            return {
+                id: sockets[i].id, name: sockets[i].data.username, status: sockets[i].data.status,
+                firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+            }
         });
         io.in(socket.data.room).emit("handcuffs_list", { firsthand: data.selectedPlayer, secondhand: data.secondSelectedPlayer });
         io.in(socket.data.room).emit("user_list", clientNames);
         io.to(socket.id).emit("draw_flannel");
-        io.to(socket.data.room).emit("lose_altitude");
+        io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
     });
 
     socket.on("card_steal", (selectedPlayer) => {
@@ -256,7 +296,7 @@ io.on("connection", (socket) => {
     socket.on("steal_reply", (data) => {
         if (data.currentHand.indexOf("knife") !== -1) {
             io.to(data.requestee).emit("draw_flannel");
-            io.to(socket.data.room).emit("lose_altitude");
+            io.to(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
         }
         else {
             const shuffledHand = shuffleCards(data.currentHand);
@@ -269,11 +309,6 @@ io.on("connection", (socket) => {
         io.to(data.selectedPlayer).emit("steal_update", data.stolenCard);
         io.to(socket.data.room).emit("lose_altitude");
     });
-
-    //socket.on("register_user", (data) => {
-    //    const userData = { id: socket.id, name: data.tempUserName };
-    //    users.push(userData);
-    //});/
 
     socket.on("send_message", (data) => {
         socket.to(data.gameId).emit("receive_message", data);
@@ -289,34 +324,8 @@ io.on("connection", (socket) => {
         }
     });
 
-    //socket.on("shuffle", () => { // Fisher Yates aka Knuth shuffle
-    //    let deck = [0, 0, 0, 1, 1, 1, 2, 4, 4, 7, 9, 10, 10, 11, 12, 13, 14, 15];
-    //    deck = shuffleCards(deck);
-    //    const lockBoxHand = deck.splice(0, 6);
-    //    deck = deck.concat([6, 6, 8, 13, 13, 13, 16, 16, 16]);
-    //    deck = shuffleCards(deck);
-    //    const player1 = deck.splice(0, 6);
-    //    const player2 = deck.splice(0, 6);
-    //    const player3 = deck.splice(0, 6);
-    //    const newNewDeck = lockBoxHand.map((c) => {
-    //        return cards[c];
-    //    });
-    //    const newPlayer1 = player1.map((c) => {
-    //        return cards[c];
-    //    });
-    //    const newPlayer2 = player2.map((c) => {
-    //        return cards[c];
-    //    });
-    //    const newPlayer3 = player3.map((c) => {
-    //        return cards[c];
-    //    });
-    //    const newoDeck = deck.map((c) => {
-    //        return cards[c];
-    //    });
-    //});
     socket.on("discard", (card) => {
         gameStatus[socket.data.room].discarded.push(card);
-        //console.log(gameStatus[socket.data.room].discarded);
     });
 
     socket.on("setup_completed", (gameId) => {
@@ -384,7 +393,7 @@ io.on("connection", (socket) => {
             io.in(socket.data.room).emit("next_turn", data.order+1);
         }
         if (!data.action) {
-            io.in(socket.data.room).emit("lose_altitude");
+            io.in(socket.data.room).emit("lose_altitude"); // after resolving the action, the altitude is dropped
         }
     });
 
@@ -398,26 +407,10 @@ io.on("connection", (socket) => {
         if (vote) {
             gameStatus[socket.data.room].temp[0]++;
         }
-        else {
-            gameStatus[socket.data.room].temp[0]--;
-        }
         if (gameStatus[socket.data.room].setup === numClients) {
             gameStatus[socket.data.room].setup = 0;
             const voteTally = gameStatus[socket.data.room].temp.pop();
             if (voteTally > Math.floor(numClients / 2)) {
-                /*const newField = field.map((c, i) => {
-                    if (i === 0) {
-                        const planePosition = c.map((c2, i2) => {
-                            if (i2 === 0) {
-                                return "p"
-                            }
-                            return c2
-                        });
-                        return planePosition;
-                    }
-                    return c;
-                });*/
-                //io.in(socket.data.room).emit("get_score");
                 io.in(socket.data.room).emit("vote_positive");
             }
             else {
@@ -436,6 +429,14 @@ io.on("connection", (socket) => {
             const parachuteCount = gameStatus[socket.data.room].temp.splice(0, numClients);
             io.in(socket.data.room).emit("set_parachutes", parachuteCount);
             if (parachuteCount.filter(p => p.number > 1).length === 0) {
+                const clients = io.sockets.adapter.rooms.get(socket.data.room);
+                const clientsArr = [...clients];
+                const parachuteless = parachuteCount.filter(p => p.number === 0);
+                parachuteless.forEach((p) => {
+                    const parachuteIndex = clientsArr.indexOf(p.socket);
+                    gameStatus[socket.data.room].temp.push({ socket: p.socket, number: p.number, index: parachuteIndex });
+                    gameStatus[socket.data.room].status++
+                })
                 const newField = field.map((c, i) => {
                     if (i === 0) {
                         const planePosition = c.map((c2, i2) => {
@@ -448,12 +449,14 @@ io.on("connection", (socket) => {
                     }
                     return c;
                 });
-                io.in(socket.data.room).emit("ready_landing", newField);
+                const randomIndex = gameStatus[socket.data.room].temp[Math.floor(Math.random() * gameStatus[socket.data.room].temp.length)].index;
+                io.in(socket.data.room).emit("ready_landing", { newField, randomIndex });
             }
         }
     });
 
-    socket.on("parachute_share", (data) => {
+
+    socket.on("parachute_share", async (data) => {
         const parachuteData = data.playerParachutes.map((c) => {
             if (data.player == c.socket) {
                 c.number++
@@ -464,6 +467,14 @@ io.on("connection", (socket) => {
             return c;
         })
         if (parachuteData.filter(p => p.number > 1).length === 0) {
+            const clients = io.sockets.adapter.rooms.get(socket.data.room);
+            const clientsArr = [...clients];
+            const parachuteless = parachuteData.filter(p => p.number === 0);
+            parachuteless.forEach((p) => {
+                const parachuteIndex = clientsArr.indexOf(p.socket);
+                gameStatus[socket.data.room].temp.push({ socket: p.socket, number: p.number, index: parachuteIndex });
+                gameStatus[socket.data.room].status++;
+            })
             const newField = field.map((c, i) => {
                 if (i === 0) {
                     const planePosition = c.map((c2, i2) => {
@@ -476,7 +487,8 @@ io.on("connection", (socket) => {
                 }
                 return c;
             });
-            io.in(socket.data.room).emit("ready_landing", newField);
+            const randomIndex = Math.floor(Math.random() * gameStatus[socket.data.room].status);
+            io.in(socket.data.room).emit("ready_landing", { newField, randomIndex});
         }
         io.in(socket.data.room).emit("set_parachutes", parachuteData);
     });
@@ -484,29 +496,14 @@ io.on("connection", (socket) => {
     socket.on("update_field", (data) => {
         const die1 = die[Math.floor(Math.random() * 6)];
         const die2 = die[Math.floor(Math.random() * 6)];
-        let position = data;
-        if (die1 === "1d") {
-            position.vertical++;
-        }
-        else if (die1 == "1r") {
-            position.horizontal++;
-        }
-        else {
-            position.vertical += parseInt(die1);
-        }
-        if (die2 === "1d") {
-            position.vertical++;
-        }
-        else if (die2 == "1r") {
-            position.horizontal++;
-        }
-        else {
-            position.horizontal += parseInt(die2);
-        }
+        io.in(socket.data.room).emit("set_dice", { die1, die2 });
+    });
+
+    socket.on("move_plane", (position) => {
         const newField = field.map((c, i) => {
-            if (data.vertical === i) {
+            if (position.vertical === i) {
                 const planePosition = c.map((c2, i2) => {
-                    if (data.horizontal === i2) {
+                    if (position.horizontal === i2) {
                         return "p"
                     }
                     return c2
@@ -515,9 +512,25 @@ io.on("connection", (socket) => {
             }
             return c;
         });
-        console.log(newField);
-        io.in(socket.data.room).emit("update_plane", { newField, position});
-    });
+        if (position.vertical === 6 && position.horizontal >= 7 && position.horizontal <= 11) {
+            io.in(socket.data.room).emit("final_stretch", { newField, position });
+        }
+        else if (position.vertical > 6 || position.horizontal > 11) {
+            io.in(socket.data.room).emit("plane_crash");
+        }
+        else {
+            io.in(socket.data.room).emit("update_plane", { newField, position });
+        }
+    })
+
+    socket.on("hit_breaks", (movement) => {
+        if (movement > 11) {
+            io.in(socket.data.room).emit("plane_crash");
+        }
+        else {
+            io.in(socket.data.room).emit("plane_landed");
+        }
+    }) 
 
     socket.on("start_game", (gameId) => {
         let deck = [0, 0, 0, 1, 1, 1, 2, 4, 4, 7, 9, 10, 10, 11, 12, 13, 14, 15];
@@ -543,7 +556,10 @@ io.on("connection", (socket) => {
             io.to(clientsArr[4]).emit("update_hand", defineCards(player5Hand));
             const player6Hand = deck.splice(0, 6);
             io.to(clientsArr[5]).emit("update_hand", defineCards(player6Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: []};
+            gameStatus[gameId] = {
+                setup: 0, lockbox: defineCards(lockboxHand),
+                deck: defineCards(deck), discarded: [], temp: []
+            };
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else if (numClients === 5) {
@@ -563,7 +579,10 @@ io.on("connection", (socket) => {
             io.to(clientsArr[3]).emit("update_hand", defineCards(player4Hand));
             const player5Hand = deck.splice(0, 6);
             io.to(clientsArr[4]).emit("update_hand", defineCards(player5Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: [] };
+            gameStatus[gameId] = {
+                setup: 0, lockbox: defineCards(lockboxHand),
+                deck: defineCards(deck), discarded: [], temp: []
+            };
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else if (numClients === 4) {
@@ -581,7 +600,10 @@ io.on("connection", (socket) => {
             io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
             const player4Hand = deck.splice(0, 6);
             io.to(clientsArr[3]).emit("update_hand", defineCards(player4Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: [] };
+            gameStatus[gameId] = {
+                setup: 0, lockbox: defineCards(lockboxHand),
+                deck: defineCards(deck), discarded: [], temp: []
+            };
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else if (numClients === 3) {
@@ -596,7 +618,10 @@ io.on("connection", (socket) => {
             io.to(clientsArr[1]).emit("update_hand", defineCards(player2Hand));
             const player3Hand = deck.splice(0, 6);
             io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: [] };
+            gameStatus[gameId] = {
+                setup: 0, lockbox: defineCards(lockboxHand),
+                deck: defineCards(deck), discarded: [], temp: []
+            };
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else {
@@ -613,7 +638,10 @@ io.on("connection", (socket) => {
                 const index = clientsArr.indexOf(socket.id);
                 clientsArr.splice(index, 1);
                 const clientNames = clientsArr.map((id, i) => {
-                    return { id: id, name: sockets[i].data.username, status: sockets[i].data.status, firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand }
+                    return {
+                        id: id, name: sockets[i].data.username, status: sockets[i].data.status,
+                        firsthand: sockets[i].data.firsthand, secondhand: sockets[i].data.secondhand
+                    }
                 });
                 io.in(room).emit("user_list", clientNames);
                 const numClients = clients ? clients.size : 0;
@@ -624,6 +652,6 @@ io.on("connection", (socket) => {
 });
 
 server.listen(3001, () => {
-    console.log("hello frinend");
+    console.log("Connected");
 });
 
