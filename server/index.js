@@ -14,6 +14,16 @@ const io = new Server(server, {
     },
 });
 
+const field = [
+    ["x", "x", "x", "x", "x", "x", "x", "x", "x", "c", "c", "c"],
+    ["x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "c", "c"],
+    ["x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "c"],
+    ["x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x"],
+    ["x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x"],
+    ["c", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x"],
+    ["c", "c", "x", "x", "x", "x", "x", "n", "n", "n", "n", "n"],
+]
+const die = ["1d", "2", "1r", "1", "3", "4"]
 const cards = ["10k", "20k", "30k", "40k", "pchute", "2pchute", "kungfu", "knife", "spy", "revolver", "bullet", "poison", "antidote", "key", "plicence", "handcuffs", "steal"];
 let gameStatus = new Array(9999);
 
@@ -336,7 +346,6 @@ io.on("connection", (socket) => {
         if (gameStatus[socket.data.room].deck.length < cardCount) {
             await remakeDeck(socket.data.room);
         }
-        console.log(gameStatus)
         const sendCards = gameStatus[socket.data.room].deck.splice(gameStatus[socket.data.room].deck.length - cardCount, cardCount);
         io.to(socket.id).emit("draw_deck", sendCards);
     });
@@ -346,14 +355,11 @@ io.on("connection", (socket) => {
     });
 
     socket.on("setup_trade", (card) => {
-        gameStatus[socket.data.room].trade.push({ socket: socket.id, card: card });
+        gameStatus[socket.data.room].temp.push({ socket: socket.id, card: card });
         gameStatus[socket.data.room].setup++;
-        console.log(gameStatus[socket.data.room])
         if (gameStatus[socket.data.room].setup === 2) {
-            const trade1 = gameStatus[socket.data.room].trade.pop();
-            const trade2 = gameStatus[socket.data.room].trade.pop();
-            console.log(trade1);
-            console.log(trade2);
+            const trade1 = gameStatus[socket.data.room].temp.pop();
+            const trade2 = gameStatus[socket.data.room].temp.pop();
             gameStatus[socket.data.room].setup = 0;
             io.to(trade1.socket).emit("complete_trade", trade2.card);
             io.to(trade2.socket).emit("complete_trade", trade1.card);
@@ -364,14 +370,13 @@ io.on("connection", (socket) => {
         socket.to(player).emit("decline_trade");
         if (gameStatus[socket.data.room].setup === 1) {
             gameStatus[socket.data.room].setup = 0;
-            gameStatus[socket.data.room].trade.pop();
+            gameStatus[socket.data.room].temp.pop();
         }
     });
 
     socket.on("end_turn", (data) => {
         const clients = io.sockets.adapter.rooms.get(socket.data.room);
         const numClients = clients ? clients.size : 0;
-        console.log(data);
         if (numClients - 1 === data.order) {
             io.in(socket.data.room).emit("next_turn", 0);
         }
@@ -381,6 +386,137 @@ io.on("connection", (socket) => {
         if (!data.action) {
             io.in(socket.data.room).emit("lose_altitude");
         }
+    });
+
+    socket.on("jump_vote", (vote) => {
+        const clients = io.sockets.adapter.rooms.get(socket.data.room);
+        const numClients = clients ? clients.size : 0;
+        gameStatus[socket.data.room].setup++;
+        if (gameStatus[socket.data.room].temp.length === 0) {
+            gameStatus[socket.data.room].temp.push(0);
+        }
+        if (vote) {
+            gameStatus[socket.data.room].temp[0]++;
+        }
+        else {
+            gameStatus[socket.data.room].temp[0]--;
+        }
+        if (gameStatus[socket.data.room].setup === numClients) {
+            gameStatus[socket.data.room].setup = 0;
+            const voteTally = gameStatus[socket.data.room].temp.pop();
+            if (voteTally > Math.floor(numClients / 2)) {
+                /*const newField = field.map((c, i) => {
+                    if (i === 0) {
+                        const planePosition = c.map((c2, i2) => {
+                            if (i2 === 0) {
+                                return "p"
+                            }
+                            return c2
+                        });
+                        return planePosition;
+                    }
+                    return c;
+                });*/
+                //io.in(socket.data.room).emit("get_score");
+                io.in(socket.data.room).emit("vote_positive");
+            }
+            else {
+                io.in(socket.data.room).emit("vote_negative");
+            }
+        }
+    });
+
+    socket.on("parachute_number", (number) => {
+        const clients = io.sockets.adapter.rooms.get(socket.data.room);
+        const numClients = clients ? clients.size : 0;
+        gameStatus[socket.data.room].setup++;
+        gameStatus[socket.data.room].temp.push({ socket: socket.id, number: number });
+        if (gameStatus[socket.data.room].setup === numClients) {
+            gameStatus[socket.data.room].setup = 0;
+            const parachuteCount = gameStatus[socket.data.room].temp.splice(0, numClients);
+            io.in(socket.data.room).emit("set_parachutes", parachuteCount);
+            if (parachuteCount.filter(p => p.number > 1).length === 0) {
+                const newField = field.map((c, i) => {
+                    if (i === 0) {
+                        const planePosition = c.map((c2, i2) => {
+                            if (i2 === 0) {
+                                return "p";
+                            }
+                            return c2;
+                        });
+                        return planePosition;
+                    }
+                    return c;
+                });
+                io.in(socket.data.room).emit("ready_landing", newField);
+            }
+        }
+    });
+
+    socket.on("parachute_share", (data) => {
+        const parachuteData = data.playerParachutes.map((c) => {
+            if (data.player == c.socket) {
+                c.number++
+            }
+            else if (c.socket == socket.id) {
+                c.number--;
+            }
+            return c;
+        })
+        if (parachuteData.filter(p => p.number > 1).length === 0) {
+            const newField = field.map((c, i) => {
+                if (i === 0) {
+                    const planePosition = c.map((c2, i2) => {
+                        if (i2 === 0) {
+                            return "p";
+                        }
+                        return c2;
+                    });
+                    return planePosition;
+                }
+                return c;
+            });
+            io.in(socket.data.room).emit("ready_landing", newField);
+        }
+        io.in(socket.data.room).emit("set_parachutes", parachuteData);
+    });
+
+    socket.on("update_field", (data) => {
+        const die1 = die[Math.floor(Math.random() * 6)];
+        const die2 = die[Math.floor(Math.random() * 6)];
+        let position = data;
+        if (die1 === "1d") {
+            position.vertical++;
+        }
+        else if (die1 == "1r") {
+            position.horizontal++;
+        }
+        else {
+            position.vertical += parseInt(die1);
+        }
+        if (die2 === "1d") {
+            position.vertical++;
+        }
+        else if (die2 == "1r") {
+            position.horizontal++;
+        }
+        else {
+            position.horizontal += parseInt(die2);
+        }
+        const newField = field.map((c, i) => {
+            if (data.vertical === i) {
+                const planePosition = c.map((c2, i2) => {
+                    if (data.horizontal === i2) {
+                        return "p"
+                    }
+                    return c2
+                });
+                return planePosition;
+            }
+            return c;
+        });
+        console.log(newField);
+        io.in(socket.data.room).emit("update_plane", { newField, position});
     });
 
     socket.on("start_game", (gameId) => {
@@ -407,7 +543,7 @@ io.on("connection", (socket) => {
             io.to(clientsArr[4]).emit("update_hand", defineCards(player5Hand));
             const player6Hand = deck.splice(0, 6);
             io.to(clientsArr[5]).emit("update_hand", defineCards(player6Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], trade: []};
+            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: []};
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else if (numClients === 5) {
@@ -427,7 +563,7 @@ io.on("connection", (socket) => {
             io.to(clientsArr[3]).emit("update_hand", defineCards(player4Hand));
             const player5Hand = deck.splice(0, 6);
             io.to(clientsArr[4]).emit("update_hand", defineCards(player5Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], trade: [] };
+            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: [] };
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else if (numClients === 4) {
@@ -445,7 +581,7 @@ io.on("connection", (socket) => {
             io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
             const player4Hand = deck.splice(0, 6);
             io.to(clientsArr[3]).emit("update_hand", defineCards(player4Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], trade: [] };
+            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: [] };
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else if (numClients === 3) {
@@ -460,7 +596,7 @@ io.on("connection", (socket) => {
             io.to(clientsArr[1]).emit("update_hand", defineCards(player2Hand));
             const player3Hand = deck.splice(0, 6);
             io.to(clientsArr[2]).emit("update_hand", defineCards(player3Hand));
-            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], trade: [] };
+            gameStatus[gameId] = { setup: 0, lockbox: defineCards(lockboxHand), deck: defineCards(deck), discarded: [], temp: [] };
             io.in(gameId).emit("setup_game", { numClients, firstPlayer });
         }
         else {

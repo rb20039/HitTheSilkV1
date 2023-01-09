@@ -17,6 +17,7 @@ function Game() {
     const [secondSelectedPlayer, setSecondSelectedPlayer] = useState("");
     const [usedCard, setUsedCard] = useState({ index: 0, card: "" });
     const [altitude, setAltitude] = useState(0);
+    const [diceResult, setDiceResult] = useState({ die1: 0, die2: 0 });
     const [playerList, setPlayerList] = useState([{
         socket: "temp",
         name: "temp1",
@@ -64,6 +65,32 @@ function Game() {
     const [playerHand, setPlayerHand] = useState(["temp1", "temp2", "temp3", "temp4", "temp5", "temp6"]);
     const [otherPlayerHand, setOtherPlayerHand] = useState(["temp1", "temp2", "temp3", "temp4"]);
     const [drawnCard, setDrawnCards] = useState(["temp1", "temp2", "temp3", "temp4"]);
+    const [playerParachutes, setPlayerParachutes] = useState([{
+            socket: "temp",
+            number: 0
+        },
+        {
+            socket: "temp",
+            number: 0
+        },
+        {
+            socket: "temp",
+            number: 0
+        },
+        {
+            socket: "temp",
+            number: 0
+        },
+        {
+            socket: "temp",
+            number: 0
+        },
+        {
+            socket: "temp",
+            number: 0
+        }
+    ]);
+    const [planeField, setPlaneField] = useState(["1", "2", "3", "4", "5", "6", "7"])
     const [revolverOptions, setRevolverOptions] = useState(["", "", "", ""]);
     const [stealOptions, setStealOptions] = useState(["", ""]);
     const [chatLog, updateChatLog] = useState([]);
@@ -72,13 +99,17 @@ function Game() {
     const playerCurrentHand = useRef([]);
     const replyPlayer = useRef("");
     const poisonedPlayer = useRef(false);
+    const planePosition = useRef({ horizontal: 0, vertical: 0 });
     const usedCardReference = useRef({ index: 0, card: "" });
     const actionTaken = useRef(false);
+    const parachuteLevel = useRef(0);
     const handcuffPairs = useRef([]);
     const [newGame, setNewGame] = useState(false);
     const [playerTurn, setPlayerTurn] = useState(0);
     const [hasDrawn, setHasDrawn] = useState(false);
+    const [landThePlane, setLandThePlane] = useState(false);
     const [initiateVote, setInitiateVote] = useState(false);
+    const [voteSelected, setVoteSelected] = useState(false);
     const [changeInitiated, setChangeInitiated] = useState(false);
     const [tradeSelected, setTradeSelected] = useState(false);
     const [gameReady, setGameReady] = useState(false);
@@ -129,6 +160,10 @@ function Game() {
         setSelectedPlayer("");
     }
 
+    const rollDice = () => {
+        socket.emit("update_field", planePosition.current);
+    }
+
     const drawCard = (card) => {
         setChangeInitiated(true);
         setUsedCard(card);
@@ -175,6 +210,40 @@ function Game() {
         setTradee("");
         setTradeSelected(false);
     }
+
+    const vote = (vote) => {
+        setVoteSelected(true);
+        socket.emit("jump_vote", vote);
+    }
+
+    const shareParachute = (player) => {
+        socket.emit("parachute_share", { player, playerParachutes });
+    }
+
+    /*const getScore = () => {
+        let money = 0;
+        let parachute = false;
+        playerCurrentHand.current.forEach((c) => {
+            if (c === "10k") {
+                money += 10;
+            }
+            else if (c === "20k") {
+                money += 20;
+            }
+            else if (c === "30k") {
+                money += 30;
+            }
+            else if (c === "40k") {
+                money += 40;
+            }
+            else if (c === "parachute") {
+                parachute = true;
+            }
+        });
+        if (parachute === true) {
+            socket.emit("set_score", money);
+        }
+    }*/
 
     function removeCard(index, discardIndicator = true, card) {
         // if a card gets stolen, it should not be discarded
@@ -400,6 +469,7 @@ function Game() {
             altitudeReference.current = altitudeReference.current - 500;
             setAltitude(altitudeReference.current);
             if (altitudeReference.current === 21000 || altitudeReference.current === 17000 || altitudeReference.current === 13000 || altitudeReference.current === 9000 || altitudeReference.current === 5000) {
+                setVoteSelected(false);
                 setInitiateVote(true);
             }
         });
@@ -474,10 +544,69 @@ function Game() {
             setPlayerHand(playerCurrentHand.current);
         });
 
+        socket.on("vote_negative", () => {
+            altitudeReference.current = altitudeReference.current - 1000;
+            setAltitude(altitudeReference.current);
+            setInitiateVote(false);
+        });
+
+        socket.on("vote_positive", () => {
+            /*const newField = planeField.map((c, i) => {
+                return field[i].toString().replaceAll(",", " ");
+            })
+            setPlaneField(newField);
+            setLandThePlane(true);*/
+            const parachuteCount = {count: 0};
+            playerCurrentHand.current.forEach((c) => {
+                if (c === "pchute") {
+                    parachuteCount.count++;
+                }
+                else if (c === "2pchute") {
+                    parachuteCount += 2;
+                }
+            });
+            socket.emit("parachute_number", parachuteCount.count);
+        });
+
+        socket.on("ready_landing", (field) => {
+            const newField = planeField.map((c, i) => {
+                return field[i].toString().replaceAll(",", " ");
+            })
+            setPlaneField(newField);
+            setLandThePlane(true);
+        })
+
+        socket.on("update_plane", (data) => {
+            const newField = planeField.map((c, i) => {
+                return data.newField[i].toString().replaceAll(",", " ");
+            });
+            planePosition.current.horizontal = data.position.horizontal;
+            planePosition.current.vertical = data.position.vertical;
+            setPlaneField(newField);
+        });
+
+        socket.on("set_parachutes", (data) => {
+            let multiple = false;
+            const newInfo = playerParachutes.map((c, i) => {
+                if (data[i] !== undefined) {
+                    if (data[i].socket === socket.id) {
+                        parachuteLevel.current = data[i].number;
+                    }
+                    if (data[i].number > 1) {
+                        multiple = true;
+                    }
+                    return data[i];
+                }
+                return c;
+            });
+            setPlayerParachutes(newInfo);
+        });
+        
     }, [socket]);
 
     if (returnToHomepage) {
         socket.emit("leave_room", gameId);
+        setUserName("");
         return (
             <Navigate to={`/`} />
         );
@@ -537,415 +666,517 @@ function Game() {
                     </div>
                 );
             }
-            if (newGame) {
-                return (
-                    <div className="ActiveGame"> 
-                        {tradee !== ""
-                            ?
-                            <>
-                                <div className="Trade">
-                                    <h1>Trading with {tradee}</h1>
-                                    <button onClick={() => { cancelTrade() }}>Cancel</button>
-                                    {!tradeSelected
-                                        ?
-                                        <>
-                                            {playerHand.map((card, i) => {
-                                                if (card === -1 || card === undefined) {
-                                                    return null;
-                                                }
-                                                else {
+            if (!landThePlane) {
+                if (playerParachutes[0].socket === "temp") {
+                    if (newGame) {
+                        return (
+                            <div className="ActiveGame">
+                                {tradee !== ""
+                                    ?
+                                    <>
+                                        <div className="Trade">
+                                            <h1>Trading with {tradee}</h1>
+                                            <button onClick={() => { cancelTrade() }}>Cancel</button>
+                                            {!tradeSelected
+                                                ?
+                                                <>
+                                                    {playerHand.map((card, i) => {
+                                                        if (card === -1 || card === undefined) {
+                                                            return null;
+                                                        }
+                                                        else {
+                                                            return (
+                                                                <div>
+                                                                    <h1>{card}</h1>
+                                                                    <button onClick={() => { setupTrade(card, i) }}>Select</button>
+                                                                </div>
+                                                            );
+                                                        }
+                                                    })}
+                                                </>
+                                                : <h1>Waiting for other players response...</h1>
+                                            }
+                                        </div>
+                                    </>
+                                    : null
+                                }
+                                {playerList[playerTurn].name === userName
+                                    ?
+                                    <>
+                                        <h1>It is your turn!</h1>
+                                        <button onClick={() => { endTurn() }}>End turn</button>
+                                    </>
+                                    : <h1>It is {playerList[playerTurn].name} turn!</h1>
+                                }
+                                {otherPlayerHand[0] !== "temp1"
+                                    ?
+                                    <>
+                                        <div className="OtherPlayerHand">
+                                            <button onClick={() => { setOtherPlayerHand(["temp1", "temp2", "temp3", "temp4"]) }}>Hide</button>
+                                            {otherPlayerHand.map((card, i) => {
+                                                return (
+                                                    <h3 key={i}>{card}</h3>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                    : null
+                                }
+                                {initiateVote
+                                    ?
+                                    <>
+                                        {!voteSelected
+                                            ?
+                                            <>
+                                                <div className="Vote">
+                                                    <h1>It's time to vote!</h1>
+                                                    <button onClick={() => { vote(true) }}>Yes</button>
+                                                    <button onClick={() => { vote(false) }}>No</button>
+                                                </div>
+                                            </>
+                                            : <h1>Waiting for others to vote...</h1>
+                                        }
+                                    </>
+                                    : null
+                                }
+                                {lockBox[0] !== "temp1"
+                                    ?
+                                    <>
+                                        <div className="LockBox">
+                                            {lockBox.map((card, i) => {
+                                                if (card !== 0) {
                                                     return (
-                                                        <div>
-                                                            <h1>{card}</h1>
-                                                            <button onClick={() => { setupTrade(card, i) }}>Select</button>
+                                                        <div className="LockBox-Card" key={i}>
+                                                            <h3>{card}</h3>
+                                                            <button onClick={() => { takeFromLockBox(card) }}>Take</button>
                                                         </div>
                                                     );
                                                 }
+                                                else {
+                                                    return null;
+                                                }
                                             })}
-                                        </>
-                                        : <h1>Waiting for other players response...</h1>
-                                    }
-                                </div>
-                            </>
-                            : null
-                        }
-                        {playerList[playerTurn].name === userName
-                            ?
-                            <>
-                                <h1>It is your turn!</h1>
-                                <button onClick={() => { endTurn() }}>End turn</button>
-                            </>
-                            : <h1>It is {playerList[playerTurn].name} turn!</h1>
-                        }
-                        {otherPlayerHand[0] !== "temp1"
-                            ?
-                            <>
-                                <div className="OtherPlayerHand">
-                                    <button onClick={() => { setOtherPlayerHand(["temp1", "temp2", "temp3", "temp4"]) }}>Hide</button>
-                                    {otherPlayerHand.map((card, i) => {
-                                        return (
-                                            <h3 key={i}>{card}</h3>
-                                        );
-                                    })}
-                                </div>
-                            </>
-                            : null
-                        }
-                        {initiateVote
-                            ? <h1>It's time to vote!</h1>
-                            : null
-                        }
-                        {lockBox[0] !== "temp1"
-                            ?
-                            <>
-                                <div className="LockBox">
-                                    {lockBox.map((card, i) => {
-                                        if (card !== 0) {
+                                        </div>
+                                    </>
+                                    : null
+                                }
+                                {stealOptions[0] !== ""
+                                    ?
+                                    <>
+                                        {stealOptions.map((card, i) => {
                                             return (
-                                                <div className="LockBox-Card" key={i}>
-                                                    <h3>{card}</h3>
-                                                    <button onClick={() => { takeFromLockBox(card) }}>Take</button>
-                                                </div>
-                                            );
-                                        }
-                                        else {
-                                            return null;
-                                        }
-                                    })}
-                                </div>
-                            </>
-                            : null
-                        }
-                        {stealOptions[0] !== "" 
-                            ?
-                            <>
-                                {stealOptions.map((card, i) => {
-                                    return (
-                                        <div className="StealOption" key={i}>
-                                            <h2>{card}</h2>
-                                            <button onClick={() => { stealCard(card) }}>Steal</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {revolverOptions[0] !== ""
-                            ?
-                            <>
-                                {revolverOptions.map((card, i) => {
-                                    return (
-                                        <div className="RevolverOption" key={i}>
-                                            <h2>{card}</h2>
-                                            <button onClick={() => { executeRevolver(card) }}>Take</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {changeInitiated === true && drawnCard[0] !== "temp1"
-                            ?
-                            <>
-                                {drawnCard.map((card, i) => {
-                                    if (card === 0) {
-                                        return null;
-                                    }
-                                    return (
-                                        <div className="DrawnCard" key={i}>
-                                            <h2>{card}</h2>
-                                            <button onClick={() => {completeDraw(card)} }>Take</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {usedCard.card === "antidote" && changeInitiated === false
-                            ?
-                            <>
-                                {playerList.map((player) => {
-                                    if (player.socket === 0 || player.status !== 2) {
-                                        return null;
-                                    }
-                                    return (
-                                        <div className="PlayerSelection" key={player.name}>
-                                            <h2>{player.name}</h2>
-                                            <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {usedCard.card === "poison" && changeInitiated === false
-                            ?
-                            <>
-                                {playerList.map((player) => {
-                                    if (player.socket === 0 || player.status !== 0) {
-                                        return null;
-                                    }
-                                    return (
-                                        <div className="PlayerSelection" key={player.name}>
-                                            <h2>{player.name}</h2>
-                                            <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {usedCard.card === "key" && changeInitiated === false
-                            ?
-                            <>
-                                <h2>Lockbox</h2>
-                                <button onClick={() => { setSelectedPlayer("lockbox") }}>Select</button>
-                                {handcuffPairs.current.map((c, i) => {
-                                    return (
-                                        <div className="HandcuffLink" key={i}>
-                                            <h1>{playerList[playerList.findIndex(i => i.socket === c.firsthand)].name}-{playerList[playerList.findIndex(i => i.socket === c.secondhand)].name}</h1>
-                                            <button onClick={() => { removeCuffs(c) }}>Release</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {usedCard.card === "handcuffs" && selectedPlayer === "" && changeInitiated === false
-                            ?
-                            <>
-                                {playerList.map((player) => {
-                                    if ((player.firsthand !== 0 && player.secondhand !== 0) || player.socket === 0) {
-                                        return null;
-                                    }
-                                    return (
-                                        <div className="PlayerSelection" key={player.name}>
-                                            <h2>{player.name}</h2>
-                                            <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {usedCard.card === "handcuffs" && selectedPlayer !== "" && changeInitiated === false
-                            ?
-                            <>
-                                {playerList.map((player) => {
-                                    if (player.socket === 0 || player.socket === selectedPlayer || (player.firsthand !== 0 && player.secondhand !== 0)) {
-                                        return null;
-                                    }
-                                    return (
-                                        <div className="PlayerSelection" key={player.name}>
-                                            <h2>{player.name}</h2>
-                                            <button onClick={() => { setSecondSelectedPlayer(player.socket) }}>Select</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {usedCard.card !== "" && usedCard.card !== "poison" && usedCard.card !== "handcuffs" && usedCard.card !== "antidote" && selectedPlayer === "" && usedCard.card !== "key" && changeInitiated === false
-                            ?
-                            <>
-                                {playerList.map((player) => {
-                                    if (player.socket === 0 || player.name === userName) {
-                                        return null;
-                                    }
-                                    return (
-                                        <div className="PlayerSelection" key={player.name}>
-                                            <h2>{player.name}</h2>
-                                            <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                            : null
-                        }
-                        {gameReady
-                            ? null
-                            : <h1>Others are still discarding!</h1>
-                        }
-                        {playerList.map((player, i) => {
-                            if (player.name === userName) {
-                                return (
-                                    <div className="YourInfo Block" key={i}>
-                                        <h1>{userName}</h1>
-                                        <h1>Status: {player.status}</h1>
-                                        {playerHand.map((card, i2) => {
-                                            if (card === -1 || card === undefined) {
-                                                return null;
-                                            }
-                                            else if (card === "pchute") {
-                                                return (
-                                                    <div className="Card Parachute" key={i2}>
-                                                        <h2>Parachute</h2>
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "2pchute") {
-                                                return (
-                                                    <div className="Card TandemParachute" key={i2}>
-                                                        <h2>Tandem Parachute</h2>
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "kungfu") {
-                                                return (
-                                                    <div className="Card KungFu" key={i2}>
-                                                        <h2>Kung Fu</h2>
-                                                        {playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "knife") {
-                                                return (
-                                                    <div className="Card Knife" key={i2}>
-                                                        <h2>Knife</h2>
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "spy") {
-                                                return (
-                                                    <div className="Card Spy" key={i2}>
-                                                        <h2>Spy</h2>
-                                                        {playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "revolver") {
-                                                return (
-                                                    <div className="Card Revolver" key={i2}>
-                                                        <h2>Revolver</h2>
-                                                        {playerCurrentHand.current.indexOf("bullet") !== -1 && playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "bullet") {
-                                                return (
-                                                    <div className="Card Bullet" key={i2}>
-                                                        <h2>Bullet</h2>
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "poison") {
-                                                return (
-                                                    <div className="Card Poison" key={i2}>
-                                                        <h2>Poison</h2>
-                                                        {playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "antidote") {
-                                                return (
-                                                    <div className="Card Antidote" key={i2}>
-                                                        <h2>Antidote</h2>
-                                                        {poisonedPlayer.current && playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "key") {
-                                                return (
-                                                    <div className="Card Key" key={i2}>
-                                                        <h2>Key</h2>
-                                                        {playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                        
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "plicence") {
-                                                return (
-                                                    <div className="Card PilotsLicence" key={i2}>
-                                                        <h2>Pilot's Licence</h2>
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "handcuffs") {
-                                                return (
-                                                    <div className="Card Handcuffs" key={i2}>
-                                                        <h2>Handcuffs</h2>
-                                                        {playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                    </div>
-                                                );
-                                            }
-                                            else if (card === "steal") {
-                                                return (
-                                                    <div className="Card Steal" key={i2}>
-                                                        <h2>Steal</h2>
-                                                        {playerList[playerTurn].name === userName
-                                                            ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
-                                                            : null
-                                                        }
-                                                        {playerList[playerTurn].name === userName && !hasDrawn
-                                                            ? <button onClick={() => { drawCard({ index: i2, card: card}) }}>Change</button>
-                                                            : null
-                                                        }
-                                                    </div>
-                                                );
-                                            }
-                                            return (
-                                                <div className="Card" key={i2}>
+                                                <div className="StealOption" key={i}>
                                                     <h2>{card}</h2>
-                                                    {playerList[playerTurn].name === userName && !hasDrawn
-                                                        ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
-                                                        : null
-                                                    }
+                                                    <button onClick={() => { stealCard(card) }}>Steal</button>
                                                 </div>
                                             );
                                         })}
+                                    </>
+                                    : null
+                                }
+                                {revolverOptions[0] !== ""
+                                    ?
+                                    <>
+                                        {revolverOptions.map((card, i) => {
+                                            return (
+                                                <div className="RevolverOption" key={i}>
+                                                    <h2>{card}</h2>
+                                                    <button onClick={() => { executeRevolver(card) }}>Take</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {changeInitiated === true && drawnCard[0] !== "temp1"
+                                    ?
+                                    <>
+                                        {drawnCard.map((card, i) => {
+                                            if (card === 0) {
+                                                return null;
+                                            }
+                                            return (
+                                                <div className="DrawnCard" key={i}>
+                                                    <h2>{card}</h2>
+                                                    <button onClick={() => { completeDraw(card) }}>Take</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {usedCard.card === "antidote" && changeInitiated === false
+                                    ?
+                                    <>
+                                        {playerList.map((player) => {
+                                            if (player.socket === 0 || player.status !== 2) {
+                                                return null;
+                                            }
+                                            return (
+                                                <div className="PlayerSelection" key={player.name}>
+                                                    <h2>{player.name}</h2>
+                                                    <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {usedCard.card === "poison" && changeInitiated === false
+                                    ?
+                                    <>
+                                        {playerList.map((player) => {
+                                            if (player.socket === 0 || player.status !== 0) {
+                                                return null;
+                                            }
+                                            return (
+                                                <div className="PlayerSelection" key={player.name}>
+                                                    <h2>{player.name}</h2>
+                                                    <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {usedCard.card === "key" && changeInitiated === false
+                                    ?
+                                    <>
+                                        <h2>Lockbox</h2>
+                                        <button onClick={() => { setSelectedPlayer("lockbox") }}>Select</button>
+                                        {handcuffPairs.current.map((c, i) => {
+                                            return (
+                                                <div className="HandcuffLink" key={i}>
+                                                    <h1>{playerList[playerList.findIndex(i => i.socket === c.firsthand)].name}-{playerList[playerList.findIndex(i => i.socket === c.secondhand)].name}</h1>
+                                                    <button onClick={() => { removeCuffs(c) }}>Release</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {usedCard.card === "handcuffs" && selectedPlayer === "" && changeInitiated === false
+                                    ?
+                                    <>
+                                        {playerList.map((player) => {
+                                            if ((player.firsthand !== 0 && player.secondhand !== 0) || player.socket === 0) {
+                                                return null;
+                                            }
+                                            return (
+                                                <div className="PlayerSelection" key={player.name}>
+                                                    <h2>{player.name}</h2>
+                                                    <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {usedCard.card === "handcuffs" && selectedPlayer !== "" && changeInitiated === false
+                                    ?
+                                    <>
+                                        {playerList.map((player) => {
+                                            if (player.socket === 0 || player.socket === selectedPlayer || (player.firsthand !== 0 && player.secondhand !== 0)) {
+                                                return null;
+                                            }
+                                            return (
+                                                <div className="PlayerSelection" key={player.name}>
+                                                    <h2>{player.name}</h2>
+                                                    <button onClick={() => { setSecondSelectedPlayer(player.socket) }}>Select</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {usedCard.card !== "" && usedCard.card !== "poison" && usedCard.card !== "handcuffs" && usedCard.card !== "antidote" && selectedPlayer === "" && usedCard.card !== "key" && changeInitiated === false
+                                    ?
+                                    <>
+                                        {playerList.map((player) => {
+                                            if (player.socket === 0 || player.name === userName) {
+                                                return null;
+                                            }
+                                            return (
+                                                <div className="PlayerSelection" key={player.name}>
+                                                    <h2>{player.name}</h2>
+                                                    <button onClick={() => { setSelectedPlayer(player.socket) }}>Select</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                    : null
+                                }
+                                {gameReady
+                                    ? null
+                                    : <h1>Others are still discarding!</h1>
+                                }
+                                {playerList.map((player, i) => {
+                                    if (player.name === userName) {
+                                        return (
+                                            <div className="YourInfo Block" key={i}>
+                                                <h1>{userName}</h1>
+                                                <h1>Status: {player.status}</h1>
+                                                {playerHand.map((card, i2) => {
+                                                    if (card === -1 || card === undefined) {
+                                                        return null;
+                                                    }
+                                                    else if (card === "pchute") {
+                                                        return (
+                                                            <div className="Card Parachute" key={i2}>
+                                                                <h2>Parachute</h2>
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "2pchute") {
+                                                        return (
+                                                            <div className="Card TandemParachute" key={i2}>
+                                                                <h2>Tandem Parachute</h2>
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "kungfu") {
+                                                        return (
+                                                            <div className="Card KungFu" key={i2}>
+                                                                <h2>Kung Fu</h2>
+                                                                {playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "knife") {
+                                                        return (
+                                                            <div className="Card Knife" key={i2}>
+                                                                <h2>Knife</h2>
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "spy") {
+                                                        return (
+                                                            <div className="Card Spy" key={i2}>
+                                                                <h2>Spy</h2>
+                                                                {playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "revolver") {
+                                                        return (
+                                                            <div className="Card Revolver" key={i2}>
+                                                                <h2>Revolver</h2>
+                                                                {playerCurrentHand.current.indexOf("bullet") !== -1 && playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "bullet") {
+                                                        return (
+                                                            <div className="Card Bullet" key={i2}>
+                                                                <h2>Bullet</h2>
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "poison") {
+                                                        return (
+                                                            <div className="Card Poison" key={i2}>
+                                                                <h2>Poison</h2>
+                                                                {playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "antidote") {
+                                                        return (
+                                                            <div className="Card Antidote" key={i2}>
+                                                                <h2>Antidote</h2>
+                                                                {poisonedPlayer.current && playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "key") {
+                                                        return (
+                                                            <div className="Card Key" key={i2}>
+                                                                <h2>Key</h2>
+                                                                {playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "plicence") {
+                                                        return (
+                                                            <div className="Card PilotsLicence" key={i2}>
+                                                                <h2>Pilot's Licence</h2>
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "handcuffs") {
+                                                        return (
+                                                            <div className="Card Handcuffs" key={i2}>
+                                                                <h2>Handcuffs</h2>
+                                                                {playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    else if (card === "steal") {
+                                                        return (
+                                                            <div className="Card Steal" key={i2}>
+                                                                <h2>Steal</h2>
+                                                                {playerList[playerTurn].name === userName
+                                                                    ? <button onClick={() => { setUsedCard({ index: i2, card: card }) }}>Use</button>
+                                                                    : null
+                                                                }
+                                                                {playerList[playerTurn].name === userName && !hasDrawn
+                                                                    ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                    : null
+                                                                }
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <div className="Card" key={i2}>
+                                                            <h2>{card}</h2>
+                                                            {playerList[playerTurn].name === userName && !hasDrawn
+                                                                ? <button onClick={() => { drawCard({ index: i2, card: card }) }}>Change</button>
+                                                                : null
+                                                            }
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    }
+                                    else if (player.socket === 0) {
+                                        return;
+                                    }
+                                    return (
+                                        <div className="PlayerInfo Block" key={i}>
+                                            <h1>{player.name}</h1>
+                                            {playerList[playerTurn].name === userName
+                                                ? <button onClick={() => { initiateTrade(player.socket) }}>Trade</button>
+                                                : null
+                                            }
+                                            <h1>Status: {player.status}</h1>
+                                            {player.status === 3
+                                                ? <h1>Player is linked to {player.firsthand !== 0 ? playerList[playerList.findIndex(i => i.socket === player.firsthand)].name : playerList[playerList.findIndex(i => i.socket === player.secondhand)].name}</h1>
+                                                : null
+                                            }
+                                        </div>
+                                    );
+                                })}
+                                <h1>Altitude: {altitude}ft</h1>
+                            </div>
+                        );
+                    }
+                    return (
+                        <div className="GameSetup">
+                            {playerHand.map((card, i) => {
+                                return (
+                                    <div className="Card" key={i}>
+                                        <h2>{card}</h2>
+                                        <button onClick={() => { removeCard(i) }}>Discard</button>
                                     </div>
                                 );
+                            })}
+                        </div>
+                    );
+                }
+                return (
+                    <div className="ParachuteSplit">
+                        {playerList.map((c, i) => {
+                            if (c.socket === 0) {
+                                return null;
                             }
-                            else if (player.socket === 0) {
-                                return;
-                            }
+                            const parachuteInfo = playerParachutes.filter(info => info.socket === c.socket);
                             return (
-                                <div className="PlayerInfo Block" key={i}>
-                                    <h1>{player.name}</h1>
-                                    <button onClick={() => { initiateTrade(player.socket) }}>Trade</button>
-                                    <h1>Status: {player.status}</h1>
-                                    {player.status === 3
-                                        ? <h1>Player is linked to {player.firsthand !== 0 ? playerList[playerList.findIndex(i => i.socket === player.firsthand)].name : playerList[playerList.findIndex(i => i.socket === player.secondhand)].name}</h1> 
+                                <div className="ParachuteShare" key={ i }>
+                                    <h1>{c.name}</h1>
+                                    <h2>{parachuteInfo[0].number}</h2>
+                                    {parachuteLevel.current > 1 && c.socket !== socket.id
+                                        ? <button onClick={() => { shareParachute(c.socket) }}>Share</button>
                                         : null
-                                    }
+                                    } 
                                 </div>
-                            );
+                            )
                         })}
-                        <h1>Altitude: {altitude}ft</h1>
                     </div>
                 );
             }
             return (
-                <div className="GameSetup">
-                    {playerHand.map((card, i) => {
+                <div className="LandThePlane">
+                    {parachuteLevel.current === 0
+                        ? <button onClick={() => { rollDice() }}>Roll dice</button>
+                        : null
+                    }
+                    <ul>
+                    {planeField.map((c, i) => {
                         return (
-                            <div className="Card" key={i}>
-                                <h2>{ card }</h2>
-                                <button onClick={() => { removeCard(i) } }>Discard</button>
-                            </div>
+                            <li key={i}>{ c }</li>
                         );
                     })}
+                    </ul>
                 </div>
             );
         }
